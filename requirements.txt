@@ -13,4 +13,4 @@ pyyaml>=6.0.1
 psutil>=5.9.7
 starlette>=0.41.3
 starlette-exporter>=0.21.0
-tashtiot-apis-library==0.0.1.dev1
+tashtiot-apis-library==0.1.0
