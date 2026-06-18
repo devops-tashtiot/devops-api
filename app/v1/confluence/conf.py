@@ -5,7 +5,7 @@ from pydantic import Field
 class ConfluenceConfig(BaseSettings):
 
     API_PREFIX: str = Field(
-        default="/api/devops/latest/confluence",
+        default="/api/devops/v1/confluence",
         description="API prefix for api exposure",
     )
 
@@ -19,23 +19,14 @@ class ConfluenceConfig(BaseSettings):
         description="Universal Plugin Manager REST API base path",
     )
 
-    S3_PLUGINS_BASE_URL: str = Field(
-        default="http://localhost:9100/confluence-plugins",
-        description=(
-            "Public base URL to the S3 plugins directory (no trailing slash). "
-            "Example: http://localhost:9100/confluence-plugins for local MinIO, "
-            "or https://my-bucket.s3.amazonaws.com for AWS."
-        ),
+    CONFLUENCE_CROWD_ENDPOINT: str = Field(
+        default="/rest/crowd/latest",
+        description="Crowd REST API base path — used for user directory listing and sync",
     )
 
     CONFLUENCE_BACKUP_RESTORE_ENDPOINT: str = Field(
         default="/rest/api/backup-restore",
         description="Confluence backup-restore REST API base path",
-    )
-
-    S3_IMPORTS_BASE_URL: str = Field(
-        default="http://localhost:9100/confluence-space-imports",
-        description="Public base URL to the S3 space-imports directory (no trailing slash)",
     )
 
     JOB_POLL_INTERVAL: float = Field(

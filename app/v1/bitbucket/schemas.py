@@ -2,22 +2,6 @@ from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
 
-class ProjectMirrorSpec(BaseModel):
-    name: str = Field(
-        ...,
-        description="name of the mirror project to create",
-        min_length=1,
-        max_length=255,
-    )
-
-    admin_user: str = Field(
-        ...,
-        description="user granted PROJECT_ADMIN on the mirror project",
-        min_length=1,
-        max_length=15,
-        pattern=r"^[a-z0-9]+$",
-    )
-
 
 class ProjectSpec(BaseModel):
     key: str = Field(
@@ -42,12 +26,12 @@ class ProjectSpec(BaseModel):
         min_length=1,
         max_length=1000
     )
-    
+
     public: bool = Field(
-        False,
+        default=False,
         description="project visibility"
     )
-    
+
     admin_user: Optional[str] = Field(
         default=None,
         description="Username to receive PROJECT_ADMIN permission",

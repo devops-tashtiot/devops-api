@@ -5,7 +5,7 @@ from pydantic import Field
 class JiraConfig(BaseSettings):
 
     API_PREFIX: str = Field(
-        default="/api/devops/latest/jira",
+        default="/api/devops/v1/jira",
         description="API prefix for api exposure",
     )
 

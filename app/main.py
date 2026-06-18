@@ -39,11 +39,7 @@ def create_app() -> FastAPI:
         app.include_router(get_v1_confluence_router(confluence_client))
 
     if global_config.ENABLE_SONARQUBE_API:
-        sonarqube_client = BaseAPI(
-            global_config.SONARQUBE_API_URL,
-            auth=(global_config.SONARQUBE_USERNAME, global_config.SONARQUBE_PASSWORD)
-        ).client
-        app.include_router(get_v1_sonarqube_router(sonarqube_client))
+        app.include_router(get_v1_sonarqube_router())
 
     if global_config.ENABLE_JIRA_API:
         jira_client = BaseAPI(
@@ -58,12 +54,14 @@ def create_app() -> FastAPI:
             token=global_config.GIT_TOKEN,
             username_or_email=global_config.GIT_USERNAME,
             project_key=global_config.GIT_PROJECT_KEY,
-            repo_slug=global_config.ARGOCD_GITOPS_REPO_SLUG,
+            repo_slug=argocd_config.ARGOCD_AAS_REPO_SLUG,
             default_ref=argocd_config.ARGOCD_GITOPS_DEFAULT_BRANCH,
             ssh_key_file_path=global_config.GIT_SSH_KEY_PATH,
-            ssh_port=global_config.GIT_SSH_PORT,
         )
-        app.include_router(get_v1_argocd_router(git))
+        app.include_router(get_v1_argocd_router(
+            git,
+            argocd_timeout=argocd_config.ARGOCD_APPLICATION_SET_TIMEOUT,
+        ))
 
     return app
 

@@ -1,11 +1,13 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
 class SonarqubeConfig(BaseSettings):
 
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
     API_PREFIX: str = Field(
-        default="/api/devops/latest/sonarqube",
+        default="/api/devops/v1/sonarqube",
         description="API prefix for api exposure",
     )
 
@@ -17,6 +19,16 @@ class SonarqubeConfig(BaseSettings):
     SONARQUBE_ADMIN_TEMPLATE_NAME: str = Field(
         default="Default template",
         description="SonarQube permission template to assign admin permissions from",
+    )
+
+    SONARQUBE_SCHEME: str = Field(
+        default="https",
+        description="URL scheme for consumer SonarQube instances (use 'http' for local dev)",
+    )
+
+    SONARQUBE_PORT: str = Field(
+        default="",
+        description="Port for consumer SonarQube instances — empty means default for the scheme (use '9000' for local dev)",
     )
 
     SONARQUBE_GLOBAL_PERMISSIONS: list[str] = Field(

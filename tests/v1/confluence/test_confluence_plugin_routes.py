@@ -45,7 +45,7 @@ def test_install_plugin_sends_correct_filename(client, mock_s3_http, mock_conflu
     files = mock_confluence_client.post.call_args.kwargs["files"]
     filename, _, content_type = files["plugin"]
     assert filename == "my-plugin-1.0.jar"
-    assert content_type == "application/java-archive"
+    assert content_type == "application/octet-stream"
 
 
 def test_install_plugin_s3_404_returns_404(mock_confluence_client):

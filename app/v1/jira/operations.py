@@ -7,7 +7,14 @@ from fastapi import HTTPException
 
 def _handle_response(response):
     if response.status_code > 299:
-        raise HTTPException(status_code=response.status_code, detail=f"errors: {response.text}")
+        try:
+            body = response.json()
+            messages = body.get("errorMessages", [])
+            field_errors = list(body.get("errors", {}).values())
+            detail = messages[0] if messages else (field_errors[0] if field_errors else response.text)
+        except Exception:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail)
 
 
 async def create_project(jira_client: Any, payload: ProjectSpec) -> None:

@@ -6,10 +6,18 @@ from loguru import logger
 from .conf import config
 from .schemas import GroupSpec
 
+SONARQUBE_GLOBAL_PERMISSIONS = config.SONARQUBE_GLOBAL_PERMISSIONS
+SONARQUBE_TEMPLATE_PERMISSIONS = config.SONARQUBE_TEMPLATE_PERMISSIONS
+
 
 def _handle_response(response):
     if response.status_code > 299:
-        raise HTTPException(status_code=response.status_code, detail=f"errors: {response.text}")
+        try:
+            errors = response.json().get("errors", [])
+            detail = errors[0]["msg"] if errors else response.text
+        except Exception:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail)
 
 
 async def create_group(sonarqube_client: Any, payload: GroupSpec):

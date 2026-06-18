@@ -40,3 +40,57 @@ Increases the storage quota for an existing Artifactory project or repository.
 |---|---|---|---|---|
 | `name` | string | yes | — | Project or repository name |
 | `storage_quota_giga_bytes` | integer | yes | 1–10 | Amount of GB to add to the current quota |
+
+---
+
+### `GET /permissions/roles/{role_name}`
+
+Returns the details of a global role by name from the JFrog Access API.
+
+**Path parameters**
+
+| Param | Type | Description |
+|---|---|---|
+| `role_name` | string | Name of the global role to fetch |
+
+**Response**
+
+Raw role object returned by `GET /access/api/v1/roles/{role_name}`.
+
+---
+
+### `POST /permissions`
+
+Grants one or more roles to a user or group on an existing project.
+
+If `member_type` is `"group"` and the group is not yet imported into JFrog Platform, it is automatically synced from the configured LDAP setting (`LDAP_SETTING_NAME`) before the role is assigned.
+
+**Request body**
+
+| Field | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `project_key` | string | yes | `^[a-z0-9\-]+$`, 2–32 chars | Target project key |
+| `member_name` | string | yes | max 255 | Username or group name |
+| `member_type` | `"user"` \| `"group"` | yes | — | Whether the member is a user or an LDAP group |
+| `roles` | array of roles | yes | at least one | Roles to assign — see `GET /permissions/roles` |
+
+**Config**
+
+| `.env` key | Default | Description |
+|---|---|---|
+| `ARTIFACTORY_LDAP_SETTING_NAME` | `ldap-ad` | Name of the LDAP setting in JFrog Platform admin (used only when importing missing groups) |
+
+---
+
+### `GET /permissions/{project_key}`
+
+Returns all current user and group role assignments for the given project.
+
+**Response**
+
+```json
+{
+  "users": [...],
+  "groups": [...]
+}
+```

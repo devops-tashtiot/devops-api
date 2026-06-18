@@ -1,11 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import PluginInstallSpec, SpaceImportSpec, SpaceSpec
+from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceImportUploadSpec, SpaceSpec
 from typing import Any
 from .conf import config
 from .operations import (
     create_space,
+    decode_file_content,
     delete_space,
     assign_space_admin,
     assign_space_group_admin,
@@ -18,6 +19,10 @@ from .operations import (
     fetch_archive_from_s3,
     upload_archive_and_start_restore,
     poll_restore_job,
+    trigger_space_export,
+    poll_export_job,
+    download_export,
+    upload_archive_to_s3,
 )
 
 
@@ -43,7 +48,22 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
         except:
-            await delete_space(confluence_client, payload)
+            await delete_space(confluence_client, payload.key)
+
+    @router.delete("/{key}", name="delete space", status_code=200)
+    async def delete_existing_space(key: str) -> JSONResponse:
+        try:
+            await delete_space(confluence_client, key)
+            return SuccessResponse(status="successful")
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Confluence. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
 
     @router.post("/plugin/", name="install confluence plugin", status_code=200)
     async def install_confluence_plugin(payload: PluginInstallSpec) -> JSONResponse:
@@ -56,6 +76,40 @@ def get_v1_confluence_router(confluence_client: Any):
             return JSONResponse(
                 ExceptionResponse(
                     stdout=f"Exception in Confluence Plugin Install. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
+
+    @router.post("/plugin/upload", name="install confluence plugin from upload", status_code=200)
+    async def install_confluence_plugin_from_upload(payload: PluginUploadSpec) -> JSONResponse:
+        try:
+            plugin_bytes = decode_file_content(payload.file_content)
+            upm_token = await get_upm_token(confluence_client)
+            await install_plugin(confluence_client, plugin_bytes, "plugin.jar", upm_token)
+            return SuccessResponse(status="successful")
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Confluence Plugin Install. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
+
+    @router.post("/space-import/upload", name="import confluence space from upload", status_code=200)
+    async def import_confluence_space_from_upload(payload: SpaceImportUploadSpec) -> JSONResponse:
+        try:
+            archive_bytes = decode_file_content(payload.file_content)
+            job_id = await upload_archive_and_start_restore(confluence_client, archive_bytes, "space-import.zip")
+            await poll_restore_job(confluence_client, job_id)
+            return SuccessResponse(status="successful")
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Confluence Space Import. {external_error.detail}",
                     status="Failed",
                     status_code=external_error.status_code,
                 ).dict(),
@@ -86,6 +140,24 @@ def get_v1_confluence_router(confluence_client: Any):
             return JSONResponse(
                 ExceptionResponse(
                     stdout=f"Exception in Confluence. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
+
+    @router.post("/space-export/", name="export space to S3", status_code=200)
+    async def export_confluence_space(payload: SpaceExportSpec) -> JSONResponse:
+        try:
+            job_id, file_name = await trigger_space_export(confluence_client, payload)
+            await poll_export_job(confluence_client, job_id)
+            archive_bytes = await download_export(confluence_client, job_id)
+            await upload_archive_to_s3(archive_bytes, file_name)
+            return JSONResponse({"status": "successful", "archive_name": file_name})
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Confluence Space Export. {external_error.detail}",
                     status="Failed",
                     status_code=external_error.status_code,
                 ).dict(),

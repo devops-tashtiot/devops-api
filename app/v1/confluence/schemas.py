@@ -85,3 +85,29 @@ class SpaceImportSpec(BaseModel):
         if not self.archive_name.lower().endswith(".zip"):
             raise ValueError("archive_name must end with .zip")
         return self
+
+
+class SpaceExportSpec(BaseModel):
+    space_key: str = Field(
+        ...,
+        description="Key of the space to export",
+        min_length=1,
+        max_length=50,
+        pattern=r"^[A-Z][A-Z0-9]*$",
+    )
+
+
+class PluginUploadSpec(BaseModel):
+    file_content: str = Field(
+        ...,
+        description="Base64-encoded .jar file (data-URL format accepted)",
+        min_length=1,
+    )
+
+
+class SpaceImportUploadSpec(BaseModel):
+    file_content: str = Field(
+        ...,
+        description="Base64-encoded .zip archive (data-URL format accepted)",
+        min_length=1,
+    )

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import ProjectSpec, ProjectMirrorSpec
+from .schemas import ProjectSpec
 from typing import Any
 from .conf import config
 from .operations import (
@@ -9,7 +9,6 @@ from .operations import (
     delete_project,
     assign_admin_permission,
     assign_admin_group_permission,
-    mirror_project,
     list_user_directories,
     sync_user_directory,
 )
@@ -36,21 +35,21 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
                 status_code=external_error.status_code
             )
         except:
-            await delete_project(bitbucket_client, payload)
+            await delete_project(bitbucket_client, payload.key)
 
-    @router.post("/mirror", name="mirror project", status_code=200)
-    async def mirror_project_route(payload: ProjectMirrorSpec) -> JSONResponse:
+    @router.delete("/{key}", name="delete project", status_code=200)
+    async def delete_existing_project(key: str) -> JSONResponse:
         try:
-            await mirror_project(bitbucket_client, payload)
+            await delete_project(bitbucket_client, key)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
                 ExceptionResponse(
                     stdout=f"Exception in Bitbucket. {external_error.detail}",
                     status="Failed",
-                    status_code=external_error.status_code
+                    status_code=external_error.status_code,
                 ).dict(),
-                status_code=external_error.status_code
+                status_code=external_error.status_code,
             )
 
     @router.get("/user-dirs", name="list user directories", status_code=200)

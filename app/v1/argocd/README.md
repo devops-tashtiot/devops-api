@@ -5,7 +5,7 @@ Each consumer config is a YAML file committed to `{env}/consumers/{name}/config.
 
 ## Base path
 
-`/api/devops/latest/argocd`
+`/api/devops/v1/argocd`
 
 ---
 
@@ -19,7 +19,7 @@ The GitOps repo connection is set in the environment:
 | `GIT_TOKEN` | Personal access token |
 | `GIT_USERNAME` | Git user |
 | `GIT_PROJECT_KEY` | Bitbucket project key |
-| `ARGOCD_GITOPS_REPO_SLUG` | Repo slug (default: `argocd-configs`) |
+| `ARGOCD_AAS_REPO_SLUG` | Repo slug (default: `argocd`) |
 | `ARGOCD_GITOPS_DEFAULT_BRANCH` | Branch to commit to (default: `master`) |
 | `ARGOCD_ALLOWED_ENVS` | Allowed environment names (e.g. `["prod","dr","int"]`) |
 | `ARGOCD_ALLOWED_SIZES` | Allowed instance sizes (default: `extraLarge`, `large`, `medium`, `small`) |
@@ -42,6 +42,7 @@ Creates a consumer config YAML and commits it to the GitOps repo.
 | `size` | string | yes | one of `ARGOCD_ALLOWED_SIZES` | ArgoCD instance size |
 | `include_resources` | array of strings | yes | each one of `ARGOCD_ALLOWED_RESOURCES`, min 1 item | Kubernetes resource kinds to include |
 | `ad_admin_group` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Active Directory group to grant admin access |
+| `extra_roles` | array of strings | no | — | Additional ArgoCD RBAC policy lines (`g`/`p` entries) written verbatim into the consumer config |
 
 ---
 

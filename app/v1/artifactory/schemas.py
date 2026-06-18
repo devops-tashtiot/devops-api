@@ -1,5 +1,36 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
+from enum import Enum
+
+
+class MemberType(str, Enum):
+    USER = "user"
+    GROUP = "group"
+
+
+class ProjectPermissionSpec(BaseModel):
+    project_key: str = Field(
+        ...,
+        description="Artifactory project key",
+        min_length=2,
+        max_length=32,
+        pattern=r"^[a-z0-9\-]+$",
+    )
+    member_name: str = Field(
+        ...,
+        description="Username or group name to grant the role to",
+        min_length=1,
+        max_length=255,
+    )
+    member_type: MemberType = Field(
+        ...,
+        description="Whether the member is a 'user' or 'group'",
+    )
+    roles: list[str] = Field(
+        ...,
+        description="List of roles to assign — use GET /permissions/roles/{project_key} to list available roles",
+        min_length=1,
+    )
 
 
 

@@ -15,6 +15,11 @@ class DevopsStaticSettings(BaseSettings):
         description="ARTIFACTORY API token",
         default="sheker_token",
     )
+
+    ARTIFACTORY_LDAP_SETTING_NAME: str = Field(
+        default="ldap-ad",
+        description="Name of the LDAP setting configured in JFrog Platform (Admin > Security > LDAP)",
+    )
     
     ARTIFACTORY_API_URL: str = Field(
         description="ARTIFACTORY api url",
@@ -86,11 +91,6 @@ class DevopsStaticSettings(BaseSettings):
         default=True,
     )
 
-    SONARQUBE_API_URL: str = Field(
-        description="SonarQube api url",
-        default="http://localhost:9000",
-    )
-
     SONARQUBE_PASSWORD: str = Field(
         description="SonarQube admin password",
         default="sheker",
@@ -106,11 +106,11 @@ class DevopsStaticSettings(BaseSettings):
         default=True,
     )
 
+# from argocd repo url the networks there
     ARGOCD_ALLOWED_ENVS: list[str] = Field(
         default=["prod", "dr", "int"],
         description="Environments allowed in this network deployment",
     )
-
 
 # for working against gitops repos
     GIT_API_URL: str = Field(
@@ -133,9 +133,14 @@ class DevopsStaticSettings(BaseSettings):
         default="DEVOPS",
     )
 
-    ARGOCD_GITOPS_REPO_SLUG: str = Field(
-        description="Bitbucket repo slug where consumer configs are stored",
-        default="argocd-configs",
+    ARGOCD_CLUSTER_SECRET_REPO_URL: str = Field(
+        description="Full Git URL of the repo containing the cluster-secret Helm chart",
+        default="https://private-bitbucket.org/scm/DEVOPS/argocd-configs.git",
+    )
+
+    DOMAIN_SUFFIX: str = Field(
+        default="app.iaf",
+        description="Shared domain suffix used across services — e.g. ArgoCD: https://{name}-argocd.{DOMAIN_SUFFIX}, SonarQube: https://{consumer}.sonarqube.{DOMAIN_SUFFIX}",
     )
 
     GIT_SSH_KEY_PATH: str = Field(
@@ -143,9 +148,19 @@ class DevopsStaticSettings(BaseSettings):
         default="/etc/.ssh/private_key",
     )
 
-    GIT_SSH_PORT: int = Field(
-        description="SSH port for the Git server",
-        default=7999,
+    S3_IMPORTS_BASE_URL: str = Field(
+        default="http://localhost:9100/confluence-space-imports",
+        description="Public base URL to the S3 space-imports directory (no trailing slash)",
+    )
+
+    ENABLE_CONFLUENCE_PLUGIN_API: bool = Field(
+        description="enable or disable confluence plugin api",
+        default=True,
+    )
+
+    S3_PLUGINS_BASE_URL: str = Field(
+        default="http://localhost:9100/confluence-plugins",
+        description="Public base URL to the S3 plugins directory (no trailing slash)",
     )
 
 

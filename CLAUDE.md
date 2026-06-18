@@ -61,6 +61,8 @@ The app is a FastAPI service that orchestrates DNS records, HAProxy load-balance
 
 **Internal library** — `tashtiot-apis-library` (version-pinned in `requirements.txt`) provides `general_create_app`, `BaseAPI`, `Git`, `ArgoCD`, `Vault`, `AWX` connectors, and shared response types like `ArgoOperationResponse` / `ExternalServiceError`. Treat it as a black-box SDK.
 
+**Connector usage rule** — always import and use the high-level service classes (`ArgoCD`, `Git`, `Vault`, `AWX`) from `tashtiot_apis_library`. Never import or instantiate the low-level `*Client` classes (e.g. `ArgoCDClient`, `GitClient`) directly — those are internal implementation details of the library. Each service class is instantiated once in `app/main.py:create_app()` and passed into router factories. See `app/v1/haproxy/operations.py` as the reference pattern for ArgoCD.
+
 **Tests** — `tests/v1/` and `tests/v2/` mirror the app structure. Fixtures (client, mock clients, sample payloads) live in `conftest.py` files at each level. `pytest.ini` sets `pythonpath = .` so imports start from the repo root.
 
 **CI** — Woodpecker (`.woodpecker/build.yaml`). Only the Kaniko image-build step is active; test steps are commented out. Images are pushed to Artifactory on git tags.
@@ -155,6 +157,36 @@ Every module under `app/v1/` has a `README.md`. **Any time you add, remove, or c
 
 ---
 
+## Module CLAUDE.md maintenance rule
+
+Every module under `app/v1/` has a `CLAUDE.md` (e.g. `app/v1/sonarqube/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`). **Any time you make a change to a module — routes, operations, schemas, conf, or any API call details — you must update that module's `CLAUDE.md` to reflect the change.** This includes:
+
+- Adding or removing endpoints → update the Routes table
+- Changing request/response fields → update the Schemas section
+- Changing the sequence or number of API calls in an operation flow → update the flow description and call counts
+- Adding or removing config fields → update the Config fields table
+- Discovering quirks about the target service's API (e.g. a non-standard status code, a required header, a known broken endpoint) → add a note in the relevant section
+
+The module `CLAUDE.md` is the authoritative developer reference for that service. It must stay in sync with the actual code at all times.
+
+---
+
+## Prefer live API lookups over hardcoded values
+
+**Never hardcode enumerable values that the target service can return via its own API.** Examples: project roles, permission types, user groups, repository categories. Instead:
+
+1. Add an operation that fetches the list from the service (e.g. `GET /projects/{key}/roles`)
+2. Expose it as a `GET` route so callers can discover valid values at runtime
+3. Accept the value as a plain `str` (or `list[str]`) in request schemas — do not gate with a Python `Enum`
+
+**Concrete examples:**
+- Artifactory project roles — `GET /access/api/v1/projects/{project_key}/roles` returns `[{"name": "Developer"}, ...]`; do NOT define a `ProjectRole` enum, use `list[str]` and expose `GET /permissions/roles/{project_key}`
+- Jira project roles — `GET /rest/api/latest/role` returns all global roles with IDs; resolve the admin role by name at call time instead of hardcoding the numeric ID
+
+The rule: if the service has an API for it, fetch it. Only hardcode a value when no such API exists.
+
+---
+
 ## Extending existing modules vs. creating new ones
 
 **Bitbucket** and **Confluence** are umbrella modules — any new Bitbucket or Confluence feature goes inside `app/v1/bitbucket/` or `app/v1/confluence/` respectively. Do **not** create a separate module (e.g. `bitbucket_userdirs/`, `confluence_groups/`) for each new operation. Instead:
@@ -180,7 +212,7 @@ from pydantic import Field
 class <Service>Config(BaseSettings):
 
     API_PREFIX: str = Field(
-        default="/api/devops/latest/<service>",
+        default="/api/devops/v1/<service>",
         description="API prefix for api exposure",
     )
 

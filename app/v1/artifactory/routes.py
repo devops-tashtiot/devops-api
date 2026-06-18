@@ -1,14 +1,14 @@
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import ProjectSpec, StorageQuotaBytes
+from .schemas import ProjectSpec, StorageQuotaBytes, ProjectPermissionSpec
 from typing import Any
-from .operations import assign_admin_group, assign_admin_user, create_project, delete_project, increase_storage_quota
+from .operations import assign_admin_group, assign_admin_user, create_project, delete_project, increase_storage_quota, assign_project_member, get_project_permissions, get_global_role
 from fastapi import APIRouter, HTTPException
 from .conf import config
 
 def get_v1_artifactory_router(artifactory_client: Any):
     router = APIRouter(prefix=config.API_PREFIX, tags=config.API_TAGS)
-    
+
     @router.post("/", name="create project", status_code=200)
     async def create_new_project(payload: ProjectSpec) -> JSONResponse:
         try:
@@ -36,7 +36,51 @@ def get_v1_artifactory_router(artifactory_client: Any):
             await increase_storage_quota(artifactory_client, payload)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
-            # platform want to return here status_code=http_status.HTTP_502_BAD_GATEWAY but it will not be informative so i return this!
             return JSONResponse(ExceptionResponse(stdout=f"Exception in Artifactory.{external_error.detail}", status="Failed", status_code=external_error.status_code).dict(), status_code=external_error.status_code)
+
+    @router.get("/permissions/roles/{role_name}", name="get global role", status_code=200)
+    async def get_role(role_name: str) -> JSONResponse:
+        try:
+            role = await get_global_role(artifactory_client, role_name)
+            return JSONResponse(role)
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Artifactory. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
+
+    @router.post("/permissions", name="grant project permission to user or group", status_code=200)
+    async def grant_permission(payload: ProjectPermissionSpec) -> JSONResponse:
+        try:
+            await assign_project_member(artifactory_client, payload)
+            return SuccessResponse(status="successful")
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Artifactory. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
+
+    @router.get("/permissions/{project_key}", name="get all permissions for a project", status_code=200)
+    async def fetch_permissions(project_key: str) -> JSONResponse:
+        try:
+            permissions = await get_project_permissions(artifactory_client, project_key)
+            return JSONResponse(permissions)
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Artifactory. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
 
     return router
