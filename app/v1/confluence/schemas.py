@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
+from tashtiot_apis_library import OperationRequest
 
 
 class SpaceSpec(BaseModel):
@@ -111,3 +112,27 @@ class SpaceImportUploadSpec(BaseModel):
         description="Base64-encoded .zip archive (data-URL format accepted)",
         min_length=1,
     )
+
+
+class ConfluenceSpaceRequest(OperationRequest):
+    spec: SpaceSpec
+
+
+class ConfluencePluginInstallRequest(OperationRequest):
+    spec: PluginInstallSpec
+
+
+class ConfluencePluginUploadRequest(OperationRequest):
+    spec: PluginUploadSpec
+
+
+class ConfluenceSpaceExportRequest(OperationRequest):
+    spec: SpaceExportSpec
+
+
+class ConfluenceSpaceImportRequest(OperationRequest):
+    spec: SpaceImportSpec
+
+
+class ConfluenceSpaceImportUploadRequest(OperationRequest):
+    spec: SpaceImportUploadSpec

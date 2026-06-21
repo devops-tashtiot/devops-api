@@ -19,6 +19,7 @@ Passed into `get_v1_artifactory_router(artifactory_client)` at startup — no pe
 | `GET` | `/permissions/roles/{role_name}` | Get a global role definition |
 | `POST` | `/permissions` | Grant a role to a user or group on a project |
 | `GET` | `/permissions/{project_key}` | Get all users and groups with roles on a project |
+| `POST` | `/xray/vulnerability-update` | Upload air-gapped Xray vulnerability DB update from S3 |
 
 ## Project create flow (POST /)
 
@@ -112,6 +113,20 @@ GET /access/api/v1/projects/{project_key}/groups  → groups
 → {"users": [...], "groups": [...]}
 ```
 
+### Xray air-gapped vulnerability update — `POST /xray/vulnerability-update`
+
+Flow:
+1. Fetch the update archive from MinIO (`ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL/{file_name}`) via anonymous `httpx.AsyncClient`
+2. POST it to Xray as `multipart/form-data`:
+
+```
+POST /xray/api/v1/system/offline_updates
+files={"file": (file_name, file_bytes, "application/octet-stream")}
+→ 200
+```
+
+The archive must be pre-uploaded to the MinIO `xray-vulnerability-updates` bucket before calling this endpoint.
+
 ## Schemas
 
 ### `ProjectSpec`
@@ -139,13 +154,20 @@ GET /access/api/v1/projects/{project_key}/groups  → groups
 | `member_type` | `MemberType` | `"user"` or `"group"` |
 | `roles` | `list[str]` | non-empty; use `GET /permissions/roles/{name}` to discover valid values |
 
+### `XrayVulnUpdateSpec`
+
+| Field | Type | Constraints |
+|---|---|---|
+| `file_name` | `str` | required; `^[a-zA-Z0-9_\-\.]+$`; 1–255 chars; archive must exist in the `xray-vulnerability-updates` S3 bucket |
+
 ## Config fields (`conf.py`)
 
 | Field | Default | Description |
 |---|---|---|
 | `ARTIFACTORY_ENDPOINT` | `/access/api/v1` | Artifactory Access REST API base path |
+| `ARTIFACTORY_XRAY_ENDPOINT` | `/xray/api/v1` | Xray REST API base path |
 
-Global token (`ARTIFACTORY_API_TOKEN`), URL (`ARTIFACTORY_API_URL`), and LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`) live in `global_conf.py`.
+Global token (`ARTIFACTORY_API_TOKEN`), URL (`ARTIFACTORY_API_URL`), LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`), and `ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL` live in `global_conf.py`.
 
 ## Local dev
 
@@ -159,4 +181,5 @@ docker compose -f ../docker-compose.artifactory.yaml up -d
 Tests mock the injected `artifactory_client` via `MagicMock` / `AsyncMock`.  
 `conftest.py` builds a throw-away `FastAPI` app with just the Artifactory router.  
 `POST /` triggers up to 3 calls: create (`post`) + user assign (`put`) + group assign (`put`).  
-`POST /storage-quota` triggers 2 calls: get current quota (`get`) + update (`put`).
+`POST /storage-quota` triggers 2 calls: get current quota (`get`) + update (`put`).  
+`POST /xray/vulnerability-update` mocks `httpx.AsyncClient` (S3 fetch) via `unittest.mock.patch` and asserts 1 `post` call to the Xray endpoint.

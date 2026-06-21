@@ -8,12 +8,23 @@ VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
 VALID_SIZE = config.ARGOCD_ALLOWED_SIZES[0]
 VALID_RESOURCE = config.ARGOCD_ALLOWED_RESOURCES[0]
 
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+
 VALID_CONSUMER_PAYLOAD = {
-    "name": "my-consumer",
-    "environment": VALID_ENV,
-    "size": VALID_SIZE,
-    "include_resources": [VALID_RESOURCE],
-    "ad_admin_group": "my-group",
+    "metadata": VALID_METADATA,
+    "spec": {
+        "name": "my-consumer",
+        "environment": VALID_ENV,
+        "size": VALID_SIZE,
+        "include_resources": [VALID_RESOURCE],
+        "ad_admin_group": "my-group",
+    },
 }
 
 VALID_CLUSTER = {
@@ -24,17 +35,23 @@ VALID_CLUSTER = {
 }
 
 VALID_CLUSTER_SECRET_PAYLOAD = {
-    "username": "admin",
-    "password": "pass",
-    "chosen_name": "nati",
-    "app_name": "netanel",
-    "application_clusters": [VALID_CLUSTER],
+    "metadata": VALID_METADATA,
+    "spec": {
+        "username": "admin",
+        "password": "pass",
+        "chosen_name": "nati",
+        "app_name": "netanel",
+        "application_clusters": [VALID_CLUSTER],
+    },
 }
 
 VALID_CLUSTER_UPDATE_PAYLOAD = {
-    "username": "admin",
-    "password": "pass",
-    "application_clusters": [VALID_CLUSTER],
+    "metadata": VALID_METADATA,
+    "spec": {
+        "username": "admin",
+        "password": "pass",
+        "application_clusters": [VALID_CLUSTER],
+    },
 }
 
 
@@ -88,26 +105,26 @@ def test_create_consumer_path_contains_env_and_name(client, mock_git):
     client.post(f"{PREFIX}/", json=VALID_CONSUMER_PAYLOAD)
     path = mock_git.add_file.call_args.args[0]
     assert VALID_ENV in path
-    assert VALID_CONSUMER_PAYLOAD["name"] in path
+    assert VALID_CONSUMER_PAYLOAD["spec"]["name"] in path
 
 
 def test_create_consumer_invalid_name_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "name": "bad name!"}
+    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "name": "bad name!"}}
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 def test_create_consumer_invalid_env_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "environment": "nonexistent-env"}
+    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "environment": "nonexistent-env"}}
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 def test_create_consumer_invalid_size_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "size": "supersize"}
+    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "size": "supersize"}}
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 def test_create_consumer_invalid_resource_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "include_resources": ["Pod"]}
+    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "include_resources": ["Pod"]}}
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
@@ -159,7 +176,7 @@ def test_create_cluster_secret_calls_create_app_and_sync(client):
 
 
 def test_create_cluster_secret_missing_clusters_returns_422(client):
-    payload = {**VALID_CLUSTER_SECRET_PAYLOAD, "application_clusters": []}
+    payload = {**VALID_CLUSTER_SECRET_PAYLOAD, "spec": {**VALID_CLUSTER_SECRET_PAYLOAD["spec"], "application_clusters": []}}
     assert client.post(f"{PREFIX}/cluster-secret", json=payload).status_code == 422
 
 

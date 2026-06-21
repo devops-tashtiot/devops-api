@@ -1,18 +1,68 @@
-from pydantic import BaseModel, Field
-from typing import Annotated, Optional
+import yaml as _yaml
+from pydantic import BaseModel, Field, field_validator, model_validator
+from typing import Annotated, Any, Literal, Optional, Union
 from enum import Enum
 
 from app.global_conf import global_config
-from app.v1.argocd.conf import config as argocd_config
+from tashtiot_apis_library import OperationRequest
 
-# g lines: exactly 3 fields (2 commas) — g, <subject>, <role>
-# p lines: exactly 6 fields (5 commas) — p, <subject>, <resource>, <action>, <object>, allow|deny
-# Each field is either a quoted string ("...") or a non-whitespace token (role:name, *, URL, etc.)
+# g lines: g, <subject>, <role>
+# p lines: p, <subject>, <resource>, <action>, <object>, allow|deny
+# Resources and actions are locked to the ArgoCD RBAC spec:
+#   https://argo-cd.readthedocs.io/en/stable/operator-manual/rbac/
 _FIELD = r'(?:"[^"]+"|\S+)'
+_RESOURCE = r'(?:applications|applicationsets|clusters|projects|repositories|accounts|certificates|gpgkeys|logs|exec|extensions|\*)'
+_ACTION = r'(?:get|create|update|delete|sync|action|override|invoke|\*)'
 RoleLine = Annotated[
     str,
-    Field(pattern=rf'^(?:g,\s*{_FIELD},\s*{_FIELD}|p(?:,\s*{_FIELD}){{4}},\s*(?:allow|deny))$'),
+    Field(pattern=rf'^(?:g,\s*{_FIELD},\s*{_FIELD}|p,\s*{_FIELD},\s*{_RESOURCE},\s*{_ACTION},\s*{_FIELD},\s*(?:allow|deny))$'),
 ]
+
+class RbacResourceEnum(str, Enum):
+    applications = "applications"
+    applicationsets = "applicationsets"
+    clusters = "clusters"
+    projects = "projects"
+    repositories = "repositories"
+    accounts = "accounts"
+    certificates = "certificates"
+    gpgkeys = "gpgkeys"
+    logs = "logs"
+    exec = "exec"
+    extensions = "extensions"
+    wildcard = "*"
+
+
+class RbacActionEnum(str, Enum):
+    get = "get"
+    create = "create"
+    update = "update"
+    delete = "delete"
+    sync = "sync"
+    action = "action"
+    override = "override"
+    invoke = "invoke"
+    wildcard = "*"
+
+
+class GLine(BaseModel):
+    ad_group: str = Field(..., min_length=1, max_length=255)
+    role: str = Field(..., min_length=1, max_length=255, pattern=r'^[a-zA-Z0-9_\-]+$')
+
+    def to_rbac(self) -> str:
+        return f'g, "{self.ad_group}", role:{self.role}'
+
+
+class PLine(BaseModel):
+    role: str = Field(..., min_length=1, max_length=255, pattern=r'^[a-zA-Z0-9_\-]+$')
+    resource: RbacResourceEnum
+    action: RbacActionEnum
+    object: str = Field(..., min_length=1, max_length=1024)
+    effect: Literal["allow", "deny"] = "allow"
+
+    def to_rbac(self) -> str:
+        return f'p, role:{self.role}, {self.resource.value}, {self.action.value}, {self.object}, {self.effect}'
+
 
 EnvironmentEnum = Enum(
     "EnvironmentEnum",
@@ -22,13 +72,13 @@ EnvironmentEnum = Enum(
 
 SizeEnum = Enum(
     "SizeEnum",
-    {s: s for s in argocd_config.ARGOCD_ALLOWED_SIZES},
+    {s: s for s in global_config.ARGOCD_ALLOWED_SIZES},
     type=str,
 )
 
 IncludeResourceEnum = Enum(
     "IncludeResourceEnum",
-    {r: r for r in argocd_config.ARGOCD_ALLOWED_RESOURCES},
+    {r: r for r in global_config.ARGOCD_ALLOWED_RESOURCES},
     type=str,
 )
 
@@ -101,6 +151,57 @@ class ClusterSecretIdentifier(BaseModel):
     chosen_name: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
 
 
+# Valid first-segment namespaces for argocd-cm keys
+_ARGOCD_CM_NAMESPACES: frozenset[str] = frozenset({
+    "url", "additionalUrls", "installationID", "passwordPattern",
+    "application", "exec", "admin", "timeout", "statusbadge",
+    "resource", "kustomize", "jsonnet", "helm", "server", "ui",
+    "dex", "oidc", "users", "accounts", "ga", "help", "cluster",
+    "project", "extension", "webhook", "commit", "sourceHydrator",
+})
+
+# Valid first-segment namespaces for argocd-cmd-params-cm keys
+_ARGOCD_PARAMS_NAMESPACES: frozenset[str] = frozenset({
+    "controller", "server", "reposerver", "applicationsetcontroller",
+    "notificationscontroller", "commitserver", "dexserver", "redis",
+    "repo", "commit", "hydrator", "otlp", "application", "log",
+})
+
+_ArgoCDValue = Union[str, bool, int, float]
+
+
+class ConsumerExtraConfig(BaseModel):
+    extra_argocd_cm_args: Optional[dict[str, _ArgoCDValue]] = None
+    extra_argocd_params: Optional[dict[str, _ArgoCDValue]] = None
+
+    @field_validator('extra_argocd_cm_args', 'extra_argocd_params', mode='before')
+    @classmethod
+    def _coerce_list_to_dict(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return {item['key']: item['value'] for item in v if item.get('key')}
+        return v
+
+    @model_validator(mode="after")
+    def validate_keys_and_yaml(self) -> "ConsumerExtraConfig":
+        if self.extra_argocd_cm_args:
+            bad = [k for k in self.extra_argocd_cm_args if k.split(".")[0] not in _ARGOCD_CM_NAMESPACES]
+            if bad:
+                raise ValueError(f"Unknown argocd-cm namespace(s): {', '.join(bad)}")
+            for key, value in self.extra_argocd_cm_args.items():
+                if isinstance(value, str) and "\n" in value:
+                    try:
+                        _yaml.safe_load(value)
+                    except _yaml.YAMLError as exc:
+                        raise ValueError(f"Value for '{key}' is not valid YAML: {exc}")
+
+        if self.extra_argocd_params:
+            bad = [k for k in self.extra_argocd_params if k.split(".")[0] not in _ARGOCD_PARAMS_NAMESPACES]
+            if bad:
+                raise ValueError(f"Unknown argocd-cmd-params-cm namespace(s): {', '.join(bad)}")
+
+        return self
+
+
 class ConsumerConfigSpec(BaseModel):
     name: str = Field(
         ...,
@@ -126,7 +227,32 @@ class ConsumerConfigSpec(BaseModel):
         max_length=255,
         pattern=r"^[a-zA-Z0-9_\-]+$",
     )
+    g_lines: Optional[list[GLine]] = Field(
+        default=None,
+        description="Structured group binding lines — each becomes a g, \"<ad_group>\", role:<role> entry",
+    )
+    p_lines: Optional[list[PLine]] = Field(
+        default=None,
+        description="Structured permission lines — each becomes a p, role:<role>, <resource>, <action>, <object>, <effect> entry",
+    )
     extra_roles: Optional[list[RoleLine]] = Field(
         default=None,
-        description="Additional ArgoCD RBAC policy lines (g/p entries) to append to the consumer config",
+        description="Raw ArgoCD RBAC policy lines (g/p entries) appended verbatim — for advanced use",
     )
+    config: Optional[ConsumerExtraConfig] = Field(
+        default=None,
+        description="Optional ArgoCD configuration overrides (argocd-cm and argocd-cmd-params-cm) injected into the consumer's config.yaml",
+    )
+
+
+class ConsumerConfigRequest(OperationRequest):
+    spec: ConsumerConfigSpec
+
+
+class ClusterSecretRequest(OperationRequest):
+    spec: ClusterSecretSpec
+
+
+class ClusterSecretUpdateRequest(OperationRequest):
+    spec: ClusterSecretUpdateSpec
+

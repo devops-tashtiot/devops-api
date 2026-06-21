@@ -8,20 +8,34 @@ from app.v1.bitbucket.routes import get_v1_bitbucket_router
 
 PREFIX = config.API_PREFIX
 
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+
 VALID_PAYLOAD = {
-    "key": "TEST",
-    "name": "test-project",
-    "description": "A test project",
-    "public": False,
-    "admin_user": "nati",
+    "metadata": VALID_METADATA,
+    "spec": {
+        "key": "TEST",
+        "name": "test-project",
+        "description": "A test project",
+        "public": False,
+        "admin_user": "nati",
+    },
 }
 
 VALID_PAYLOAD_GROUP = {
-    "key": "TEST",
-    "name": "test-project",
-    "description": "A test project",
-    "public": False,
-    "admin_group": "devops-team",
+    "metadata": VALID_METADATA,
+    "spec": {
+        "key": "TEST",
+        "name": "test-project",
+        "description": "A test project",
+        "public": False,
+        "admin_group": "devops-team",
+    },
 }
 
 

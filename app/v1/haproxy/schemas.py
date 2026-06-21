@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional, List
 from enum import Enum
-from tashtiot_apis_library import DefaultMetaSpec, ResourceSpec, NameNamespace
+from tashtiot_apis_library import DefaultMetaSpec, ResourceSpec, NameNamespace, OperationRequest
 from .conf import config
 
 ClusterEnum = Enum("ClusterEnum", {c: c for c in config.CLUSTERS})
@@ -35,8 +35,8 @@ class HaProxySpec(BaseModel):
     secrets: HaProxySecrets = Field(..., description="HaProxy's secrets schema.")
 
 
-class HaProxyPayload(BaseModel):
-    
+class HaProxyPayload(OperationRequest):
+
     spec: HaProxySpec = Field(..., description="Haproxy's spec schema.")
     
     

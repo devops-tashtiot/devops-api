@@ -16,24 +16,9 @@ class ArgocdConfig(BaseSettings):
         description="Tags used for OpenAPI documentation grouping.",
     )
 
-    ARGOCD_AAS_REPO_SLUG: str = Field(
-        default="argocd",
-        description="Bitbucket repo slug where ArgoCD consumer configs are stored",
-    )
-
     ARGOCD_GITOPS_DEFAULT_BRANCH: str = Field(
-        description="Default branch to commit consumer configs to",
         default="master",
-    )
-
-    ARGOCD_ALLOWED_SIZES: list[str] = Field(
-        default=["extraLarge", "large", "medium", "small"],
-        description="ArgoCD instance sizes available in this deployment",
-    )
-
-    ARGOCD_ALLOWED_RESOURCES: list[str] = Field(
-        default=["ExternalSecret", "ConfigMap", "Deployment"],
-        description="Kubernetes resource kinds allowed in include_resources",
+        description="Default branch to commit consumer configs to",
     )
 
     ARGOCD_CLUSTER_SECRET_CHART_PATH: str = Field(

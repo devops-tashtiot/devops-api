@@ -6,7 +6,7 @@ from app.global_conf import global_config
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
 from .conf import config
 from .operations import create_consumer_config, delete_consumer_config, create_cluster_secret, delete_cluster_secret, edit_cluster_secret
-from .schemas import ConsumerConfigSpec, ClusterSecretSpec, ClusterSecretUpdateSpec, ClusterSecretIdentifier, SizeEnum, IncludeResourceEnum
+from .schemas import ConsumerConfigSpec, ClusterSecretSpec, ClusterSecretUpdateSpec, ClusterSecretIdentifier, SizeEnum, IncludeResourceEnum, RbacResourceEnum, RbacActionEnum, ConsumerConfigRequest, ClusterSecretRequest, ClusterSecretUpdateRequest
 
 
 def get_v1_argocd_router(git: Git, argocd_timeout: int):
@@ -19,6 +19,14 @@ def get_v1_argocd_router(git: Git, argocd_timeout: int):
     @router.get("/include-resources", name="get valid include resources")
     async def get_include_resources() -> list[str]:
         return [r.value for r in IncludeResourceEnum]
+
+    @router.get("/rbac-resources", name="get valid rbac resources")
+    async def get_rbac_resources() -> list[str]:
+        return [r.value for r in RbacResourceEnum]
+
+    @router.get("/rbac-actions", name="get valid rbac actions")
+    async def get_rbac_actions() -> list[str]:
+        return [a.value for a in RbacActionEnum]
 
     @router.get("/environments", name="get valid environments")
     async def get_environments() -> list[str]:
@@ -40,9 +48,9 @@ def get_v1_argocd_router(git: Git, argocd_timeout: int):
             )
 
     @router.post("/", name="create consumer argocd config", status_code=200)
-    async def create_consumer(payload: ConsumerConfigSpec) -> JSONResponse:
+    async def create_consumer(payload: ConsumerConfigRequest) -> JSONResponse:
         try:
-            await create_consumer_config(git, payload)
+            await create_consumer_config(git, payload.spec)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
@@ -55,9 +63,9 @@ def get_v1_argocd_router(git: Git, argocd_timeout: int):
             )
 
     @router.post("/cluster-secret", name="create cluster secret argocd application", status_code=200)
-    async def create_cluster_secret_app(payload: ClusterSecretSpec) -> JSONResponse:
+    async def create_cluster_secret_app(payload: ClusterSecretRequest) -> JSONResponse:
         try:
-            await create_cluster_secret(argocd_timeout, payload)
+            await create_cluster_secret(argocd_timeout, payload.spec)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
@@ -85,9 +93,9 @@ def get_v1_argocd_router(git: Git, argocd_timeout: int):
             )
 
     @router.put("/cluster-secret/{app_name}/{chosen_name}", name="edit cluster secret argocd application", status_code=200)
-    async def edit_cluster_secret_app(app_name: str, chosen_name: str, payload: ClusterSecretUpdateSpec) -> JSONResponse:
+    async def edit_cluster_secret_app(app_name: str, chosen_name: str, payload: ClusterSecretUpdateRequest) -> JSONResponse:
         try:
-            await edit_cluster_secret(argocd_timeout, app_name, chosen_name, payload)
+            await edit_cluster_secret(argocd_timeout, app_name, chosen_name, payload.spec)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(

@@ -10,7 +10,7 @@ pip install tashtiot-apis-library==0.1.0
 
 # 2. Edit .env directly (do NOT copy .env.example — .env is the live config file)
 # Minimum for local dev — disable ArgoCD if you have no SSH key:
-#   ENABLE_ARGOCD_API=false
+#   ARGOCD_ENABLE_API=false
 # Confluence local stack: CONFLUENCE_API_URL=http://localhost:8090, user admin, pass 12345678
 # Bitbucket  local stack: BITBUCKET_API_URL=http://localhost:7990,   user admin, pass 12345678
 # SonarQube  local stack: SONARQUBE_API_URL=http://localhost:9000,   user admin, pass SonarqubeDevops1!
@@ -446,10 +446,10 @@ if global_config.ENABLE_<SERVICE>_API:
 3. API polls `/rest/api/backup-restore/jobs/{id}` until `jobState == "FINISHED"` or timeout
 
 **Key env vars** (in `app/v1/confluence/conf.py`):
-- `S3_PLUGINS_BASE_URL` — bucket URL for plugins (default: `http://localhost:9100/confluence-plugins`)
-- `S3_IMPORTS_BASE_URL` — bucket URL for space archives (default: `http://localhost:9100/confluence-space-imports`)
+- `CONFLUENCE_S3_PLUGINS_BASE_URL` — bucket URL for plugins (default: `http://localhost:9100/confluence-plugins`)
+- `CONFLUENCE_S3_IMPORTS_BASE_URL` — bucket URL for space archives (default: `http://localhost:9100/confluence-space-imports`)
 - `CONFLUENCE_UPM_ENDPOINT` — UPM base path (default: `/rest/plugins/1.0`)
-- `JOB_POLL_INTERVAL` / `JOB_MAX_POLLS` — restore job polling config
+- `CONFLUENCE_JOB_POLL_INTERVAL` / `CONFLUENCE_JOB_MAX_POLLS` — restore job polling config
 
 **Confluence prerequisite — allow plugin uploads:**
 Admin → Add-ons / Manage apps → Settings → uncheck "Prevent users from installing add-ons"

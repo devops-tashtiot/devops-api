@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceImportUploadSpec, SpaceSpec
+from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceImportUploadSpec, SpaceSpec, ConfluenceSpaceRequest, ConfluencePluginInstallRequest, ConfluencePluginUploadRequest, ConfluenceSpaceExportRequest, ConfluenceSpaceImportRequest, ConfluenceSpaceImportUploadRequest
 from typing import Any
 from .conf import config
 from .operations import (
@@ -30,13 +30,13 @@ def get_v1_confluence_router(confluence_client: Any):
     router = APIRouter(prefix=config.API_PREFIX, tags=config.API_TAGS)
 
     @router.post("/", name="create space", status_code=200)
-    async def create_new_space(payload: SpaceSpec) -> JSONResponse:
+    async def create_new_space(payload: ConfluenceSpaceRequest) -> JSONResponse:
         try:
-            await create_space(confluence_client, payload)
-            if payload.admin_user:
-                await assign_space_admin(confluence_client, payload)
-            if payload.admin_group:
-                await assign_space_group_admin(confluence_client, payload)
+            await create_space(confluence_client, payload.spec)
+            if payload.spec.admin_user:
+                await assign_space_admin(confluence_client, payload.spec)
+            if payload.spec.admin_group:
+                await assign_space_group_admin(confluence_client, payload.spec)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
@@ -48,7 +48,7 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
         except:
-            await delete_space(confluence_client, payload.key)
+            await delete_space(confluence_client, payload.spec.key)
 
     @router.delete("/{key}", name="delete space", status_code=200)
     async def delete_existing_space(key: str) -> JSONResponse:
@@ -66,11 +66,11 @@ def get_v1_confluence_router(confluence_client: Any):
             )
 
     @router.post("/plugin/", name="install confluence plugin", status_code=200)
-    async def install_confluence_plugin(payload: PluginInstallSpec) -> JSONResponse:
+    async def install_confluence_plugin(payload: ConfluencePluginInstallRequest) -> JSONResponse:
         try:
-            plugin_bytes = await fetch_plugin_from_public_s3(payload)
+            plugin_bytes = await fetch_plugin_from_public_s3(payload.spec)
             upm_token = await get_upm_token(confluence_client)
-            await install_plugin(confluence_client, plugin_bytes, payload.plugin_name, upm_token)
+            await install_plugin(confluence_client, plugin_bytes, payload.spec.plugin_name, upm_token)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
@@ -83,9 +83,9 @@ def get_v1_confluence_router(confluence_client: Any):
             )
 
     @router.post("/plugin/upload", name="install confluence plugin from upload", status_code=200)
-    async def install_confluence_plugin_from_upload(payload: PluginUploadSpec) -> JSONResponse:
+    async def install_confluence_plugin_from_upload(payload: ConfluencePluginUploadRequest) -> JSONResponse:
         try:
-            plugin_bytes = decode_file_content(payload.file_content)
+            plugin_bytes = decode_file_content(payload.spec.file_content)
             upm_token = await get_upm_token(confluence_client)
             await install_plugin(confluence_client, plugin_bytes, "plugin.jar", upm_token)
             return SuccessResponse(status="successful")
@@ -100,9 +100,9 @@ def get_v1_confluence_router(confluence_client: Any):
             )
 
     @router.post("/space-import/upload", name="import confluence space from upload", status_code=200)
-    async def import_confluence_space_from_upload(payload: SpaceImportUploadSpec) -> JSONResponse:
+    async def import_confluence_space_from_upload(payload: ConfluenceSpaceImportUploadRequest) -> JSONResponse:
         try:
-            archive_bytes = decode_file_content(payload.file_content)
+            archive_bytes = decode_file_content(payload.spec.file_content)
             job_id = await upload_archive_and_start_restore(confluence_client, archive_bytes, "space-import.zip")
             await poll_restore_job(confluence_client, job_id)
             return SuccessResponse(status="successful")
@@ -147,9 +147,9 @@ def get_v1_confluence_router(confluence_client: Any):
             )
 
     @router.post("/space-export/", name="export space to S3", status_code=200)
-    async def export_confluence_space(payload: SpaceExportSpec) -> JSONResponse:
+    async def export_confluence_space(payload: ConfluenceSpaceExportRequest) -> JSONResponse:
         try:
-            job_id, file_name = await trigger_space_export(confluence_client, payload)
+            job_id, file_name = await trigger_space_export(confluence_client, payload.spec)
             await poll_export_job(confluence_client, job_id)
             archive_bytes = await download_export(confluence_client, job_id)
             await upload_archive_to_s3(archive_bytes, file_name)
@@ -165,10 +165,10 @@ def get_v1_confluence_router(confluence_client: Any):
             )
 
     @router.post("/space-import/", name="import confluence space", status_code=200)
-    async def import_confluence_space(payload: SpaceImportSpec) -> JSONResponse:
+    async def import_confluence_space(payload: ConfluenceSpaceImportRequest) -> JSONResponse:
         try:
-            archive_bytes = await fetch_archive_from_s3(payload)
-            job_id = await upload_archive_and_start_restore(confluence_client, archive_bytes, payload.archive_name)
+            archive_bytes = await fetch_archive_from_s3(payload.spec)
+            job_id = await upload_archive_and_start_restore(confluence_client, archive_bytes, payload.spec.archive_name)
             await poll_restore_job(confluence_client, job_id)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:

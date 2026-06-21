@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from enum import Enum
+from tashtiot_apis_library import OperationRequest
 
 
 class MemberType(str, Enum):
@@ -88,3 +89,29 @@ class ProjectSpec(BaseModel):
     @property
     def project_key(self) -> str:
         return self.name.lower().replace(" ", "-").replace("_", "-")
+
+
+class ArtifactoryProjectRequest(OperationRequest):
+    spec: ProjectSpec
+
+
+class ArtifactoryStorageQuotaRequest(OperationRequest):
+    spec: StorageQuotaBytes
+
+
+class ArtifactoryPermissionRequest(OperationRequest):
+    spec: ProjectPermissionSpec
+
+
+class XrayVulnUpdateSpec(BaseModel):
+    file_name: str = Field(
+        ...,
+        description="Name of the vulnerability update archive in the S3 bucket",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[a-zA-Z0-9_\-\.]+$",
+    )
+
+
+class ArtifactoryXrayUpdateRequest(OperationRequest):
+    spec: XrayVulnUpdateSpec

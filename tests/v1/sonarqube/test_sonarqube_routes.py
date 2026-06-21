@@ -11,8 +11,18 @@ PREFIX = config.API_PREFIX
 # 1 create + N global permissions + N template permissions
 EXPECTED_CALL_COUNT = 1 + len(SONARQUBE_GLOBAL_PERMISSIONS) + len(SONARQUBE_TEMPLATE_PERMISSIONS)
 
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
 
-VALID_PAYLOAD = {"consumer_name": "test-consumer", "name": "check"}
+VALID_PAYLOAD = {
+    "metadata": VALID_METADATA,
+    "spec": {"consumer_name": "test-consumer", "name": "check"},
+}
 
 
 def test_create_group_check_returns_200(client, mock_sonar_client):
@@ -62,10 +72,11 @@ def test_create_group_already_exists_returns_400(mock_sonar_client):
     conflict = MagicMock()
     conflict.status_code = 400
     conflict.text = "Group 'check' already exists"
+    conflict.json = MagicMock(return_value={"errors": []})
     mock_sonar_client.post = AsyncMock(return_value=conflict)
 
     app = FastAPI()
-    app.include_router(get_v1_sonarqube_router())
+    app.include_router(get_v1_sonarqube_router(MagicMock()))
     client = TestClient(app)
 
     response = client.post(f"{PREFIX}/", json=VALID_PAYLOAD)
@@ -79,10 +90,11 @@ def test_create_group_already_exists_does_not_rollback(mock_sonar_client):
     conflict = MagicMock()
     conflict.status_code = 400
     conflict.text = "Group 'check' already exists"
+    conflict.json = MagicMock(return_value={"errors": []})
     mock_sonar_client.post = AsyncMock(return_value=conflict)
 
     app = FastAPI()
-    app.include_router(get_v1_sonarqube_router())
+    app.include_router(get_v1_sonarqube_router(MagicMock()))
     client = TestClient(app)
 
     client.post(f"{PREFIX}/", json=VALID_PAYLOAD)
@@ -93,12 +105,12 @@ def test_create_group_already_exists_does_not_rollback(mock_sonar_client):
 
 
 def test_create_group_invalid_name_returns_422(client):
-    response = client.post(f"{PREFIX}/", json={"consumer_name": "test-consumer", "name": "invalid name!"})
+    response = client.post(f"{PREFIX}/", json={"metadata": VALID_METADATA, "spec": {"consumer_name": "test-consumer", "name": "invalid name!"}})
     assert response.status_code == 422
 
 
 def test_create_group_empty_name_returns_422(client):
-    response = client.post(f"{PREFIX}/", json={"consumer_name": "test-consumer", "name": ""})
+    response = client.post(f"{PREFIX}/", json={"metadata": VALID_METADATA, "spec": {"consumer_name": "test-consumer", "name": ""}})
     assert response.status_code == 422
 
 
@@ -120,7 +132,7 @@ def test_delete_group_error_returns_error_response(mock_sonar_client):
     mock_sonar_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Group not found"))
 
     app = FastAPI()
-    app.include_router(get_v1_sonarqube_router())
+    app.include_router(get_v1_sonarqube_router(MagicMock()))
     c = TestClient(app)
 
     response = c.delete(f"{PREFIX}/test-consumer/check")
@@ -134,7 +146,7 @@ def test_create_group_unexpected_error_triggers_rollback(mock_sonar_client):
     mock_sonar_client.post = AsyncMock(side_effect=[Exception("network error"), ok])
 
     app = FastAPI()
-    app.include_router(get_v1_sonarqube_router())
+    app.include_router(get_v1_sonarqube_router(MagicMock()))
     c = TestClient(app)
 
     c.post(f"{PREFIX}/", json=VALID_PAYLOAD)

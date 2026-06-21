@@ -8,24 +8,25 @@ from app.v1.jira.routes import get_v1_jira_router
 
 PREFIX = config.API_PREFIX
 
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+
 VALID_USER_PAYLOAD = {
-    "key": "MYPROJ",
-    "name": "My Project",
-    "description": "A test project",
-    "admin_user": "admin",
+    "metadata": VALID_METADATA,
+    "spec": {"key": "MYPROJ", "name": "My Project", "description": "A test project", "admin_user": "admin"},
 }
 VALID_GROUP_PAYLOAD = {
-    "key": "GRPPROJ",
-    "name": "Group Project",
-    "description": "A group project",
-    "admin_group": "dev-team",
+    "metadata": VALID_METADATA,
+    "spec": {"key": "GRPPROJ", "name": "Group Project", "description": "A group project", "admin_group": "dev-team"},
 }
 VALID_BOTH_PAYLOAD = {
-    "key": "BTPROJ",
-    "name": "Both Project",
-    "description": "Both admins",
-    "admin_user": "admin",
-    "admin_group": "dev-team",
+    "metadata": VALID_METADATA,
+    "spec": {"key": "BTPROJ", "name": "Both Project", "description": "Both admins", "admin_user": "admin", "admin_group": "dev-team"},
 }
 
 

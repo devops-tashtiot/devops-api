@@ -8,24 +8,25 @@ from app.v1.confluence.routes import get_v1_confluence_router
 
 PREFIX = config.API_PREFIX
 
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+
 VALID_USER_PAYLOAD = {
-    "key": "TESTSP",
-    "name": "Test Space",
-    "description": "A test space",
-    "admin_user": "admin",
+    "metadata": VALID_METADATA,
+    "spec": {"key": "TESTSP", "name": "Test Space", "description": "A test space", "admin_user": "admin"},
 }
 VALID_GROUP_PAYLOAD = {
-    "key": "GRPSP",
-    "name": "Group Space",
-    "description": "A group space",
-    "admin_group": "dev-team",
+    "metadata": VALID_METADATA,
+    "spec": {"key": "GRPSP", "name": "Group Space", "description": "A group space", "admin_group": "dev-team"},
 }
 VALID_BOTH_PAYLOAD = {
-    "key": "BOTHSP",
-    "name": "Both Space",
-    "description": "Both admins",
-    "admin_user": "admin",
-    "admin_group": "dev-team",
+    "metadata": VALID_METADATA,
+    "spec": {"key": "BOTHSP", "name": "Both Space", "description": "Both admins", "admin_user": "admin", "admin_group": "dev-team"},
 }
 
 

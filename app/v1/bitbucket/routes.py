@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import ProjectSpec
+from .schemas import ProjectSpec, BitbucketProjectRequest
 from typing import Any
 from .conf import config
 from .operations import (
@@ -17,13 +17,13 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
     router = APIRouter(prefix=config.API_PREFIX, tags=config.API_TAGS)
 
     @router.post("/", name="create project", status_code=200)
-    async def create_new_project(payload: ProjectSpec) -> JSONResponse:
+    async def create_new_project(payload: BitbucketProjectRequest) -> JSONResponse:
         try:
-            await create_project(bitbucket_client, payload)
-            if payload.admin_user:
-                await assign_admin_permission(bitbucket_client, payload)
-            if payload.admin_group:
-                await assign_admin_group_permission(bitbucket_client, payload)
+            await create_project(bitbucket_client, payload.spec)
+            if payload.spec.admin_user:
+                await assign_admin_permission(bitbucket_client, payload.spec)
+            if payload.spec.admin_group:
+                await assign_admin_group_permission(bitbucket_client, payload.spec)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
@@ -35,7 +35,7 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
                 status_code=external_error.status_code
             )
         except:
-            await delete_project(bitbucket_client, payload.key)
+            await delete_project(bitbucket_client, payload.spec.key)
 
     @router.delete("/{key}", name="delete project", status_code=200)
     async def delete_existing_project(key: str) -> JSONResponse:

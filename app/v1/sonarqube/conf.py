@@ -11,6 +11,11 @@ class SonarqubeConfig(BaseSettings):
         description="API prefix for api exposure",
     )
 
+    API_TAGS: list[str] = Field(
+        default=["v1 - SonarQube Operations"],
+        description="Tags used for OpenAPI documentation grouping.",
+    )
+
     SONARQUBE_ENDPOINT: str = Field(
         default="/api",
         description="SonarQube Web API base path",
@@ -41,9 +46,10 @@ class SonarqubeConfig(BaseSettings):
         description="Per-project template permissions granted to new admin groups",
     )
 
-    API_TAGS: list[str] = Field(
-        default=["v1 - SonarQube Operations"],
-        description="Tags used for OpenAPI documentation grouping.",
+
+    SONARQUBE_GITOPS_DEFAULT_BRANCH: str = Field(
+        default="master",
+        description="Default branch for the SonarQube GitOps repo",
     )
 
 

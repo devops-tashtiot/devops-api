@@ -86,7 +86,7 @@ async def assign_space_group_admin(confluence_client: Any, payload: SpaceSpec):
 
 
 async def fetch_plugin_from_public_s3(payload: PluginInstallSpec) -> bytes:
-    url = f"{global_config.S3_PLUGINS_BASE_URL}/{payload.plugin_name}"
+    url = f"{global_config.CONFLUENCE_S3_PLUGINS_BASE_URL}/{payload.plugin_name}"
     try:
         async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
             response = await client.get(url)
@@ -188,7 +188,7 @@ async def trigger_space_export(confluence_client: Any, payload: SpaceExportSpec)
 
 async def poll_export_job(confluence_client: Any, job_id: int) -> None:
     endpoint = f"{config.CONFLUENCE_BACKUP_RESTORE_ENDPOINT}/jobs/{job_id}"
-    for attempt in range(config.JOB_MAX_POLLS):
+    for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
         try:
             response = await confluence_client.get(endpoint)
             _handle_response(response)
@@ -206,10 +206,10 @@ async def poll_export_job(confluence_client: Any, job_id: int) -> None:
         except Exception as e:
             logger.error(f"Error polling export job {job_id}: {e}")
             raise HTTPException(status_code=502, detail=f"Error polling export job: {e}")
-        await asyncio.sleep(config.JOB_POLL_INTERVAL)
+        await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
     raise HTTPException(
         status_code=504,
-        detail=f"Export job {job_id} did not finish within {config.JOB_MAX_POLLS * config.JOB_POLL_INTERVAL:.0f}s",
+        detail=f"Export job {job_id} did not finish within {config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
     )
 
 
@@ -228,7 +228,7 @@ async def download_export(confluence_client: Any, job_id: int) -> bytes:
 
 
 async def upload_archive_to_s3(archive_bytes: bytes, archive_name: str) -> None:
-    url = f"{global_config.S3_IMPORTS_BASE_URL}/{archive_name}"
+    url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{archive_name}"
     try:
         async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
             response = await client.put(
@@ -247,7 +247,7 @@ async def upload_archive_to_s3(archive_bytes: bytes, archive_name: str) -> None:
 
 
 async def fetch_archive_from_s3(payload: SpaceImportSpec) -> bytes:
-    url = f"{global_config.S3_IMPORTS_BASE_URL}/{payload.archive_name}"
+    url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{payload.archive_name}"
     try:
         async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
             response = await client.get(url)
@@ -285,7 +285,7 @@ async def upload_archive_and_start_restore(confluence_client: Any, archive_bytes
 
 async def poll_restore_job(confluence_client: Any, job_id: int) -> dict:
     endpoint = f"{config.CONFLUENCE_BACKUP_RESTORE_ENDPOINT}/jobs/{job_id}"
-    for attempt in range(config.JOB_MAX_POLLS):
+    for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
         try:
             response = await confluence_client.get(endpoint)
             _handle_response(response)
@@ -303,8 +303,8 @@ async def poll_restore_job(confluence_client: Any, job_id: int) -> dict:
         except Exception as e:
             logger.error(f"Error polling restore job {job_id}: {e}")
             raise HTTPException(status_code=502, detail=f"Error polling restore job: {e}")
-        await asyncio.sleep(config.JOB_POLL_INTERVAL)
+        await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
     raise HTTPException(
         status_code=504,
-        detail=f"Restore job {job_id} did not finish within {config.JOB_MAX_POLLS * config.JOB_POLL_INTERVAL:.0f}s",
+        detail=f"Restore job {job_id} did not finish within {config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
     )

@@ -42,7 +42,8 @@ Creates a consumer config YAML and commits it to the GitOps repo.
 | `size` | string | yes | one of `ARGOCD_ALLOWED_SIZES` | ArgoCD instance size |
 | `include_resources` | array of strings | yes | each one of `ARGOCD_ALLOWED_RESOURCES`, min 1 item | Kubernetes resource kinds to include |
 | `ad_admin_group` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Active Directory group to grant admin access |
-| `extra_roles` | array of strings | no | — | Additional ArgoCD RBAC policy lines (`g`/`p` entries) written verbatim into the consumer config |
+| `extra_roles` | array of strings | no | see [RBAC policy lines](#rbac-policy-lines) | Additional ArgoCD RBAC policy lines (`g`/`p` entries) written verbatim into the consumer config |
+| `config` | object | no | see [ArgoCD config overrides](#argocd-config-overrides) | Optional ArgoCD configuration overrides injected into the consumer's config.yaml |
 
 ---
 
@@ -74,3 +75,70 @@ Returns the list of valid Kubernetes resource kinds for `include_resources`.
 ### `GET /environments`
 
 Returns the list of valid environments for this deployment.
+
+---
+
+## RBAC policy lines
+
+`extra_roles` is an optional list of ArgoCD RBAC policy strings. Each entry must match one of:
+
+- **`g` line** — group/user assignment: `g, <subject>, <role>`
+- **`p` line** — permission rule: `p, <subject>, <resource>, <action>, <object>, <allow|deny>`
+
+Valid resources: `applications`, `applicationsets`, `clusters`, `projects`, `repositories`, `accounts`, `certificates`, `gpgkeys`, `logs`, `exec`, `extensions`, `*`
+
+Valid actions: `get`, `create`, `update`, `delete`, `sync`, `action`, `override`, `invoke`, `*`
+
+**Examples:**
+
+```json
+{
+  "extra_roles": [
+    "g, \"DEV_MyTeam\", role:myteam",
+    "p, role:myteam, applications, *, myteam/*, allow",
+    "p, role:myteam, clusters, get, https://api.example.com:6443, allow"
+  ]
+}
+```
+
+---
+
+## ArgoCD config overrides
+
+The optional `config` field injects ArgoCD configuration into the consumer's `config.yaml`. It has two sub-fields:
+
+### `extra_argocd_cm_args`
+
+Key-value pairs written into the `argocd-cm` ConfigMap. Keys are validated by their namespace prefix:
+
+| Valid namespace prefixes |
+|---|
+| `application`, `exec`, `admin`, `timeout`, `statusbadge`, `resource`, `kustomize`, `jsonnet`, `helm`, `server`, `ui`, `dex`, `oidc`, `users`, `accounts`, `ga`, `help`, `cluster`, `project`, `extension`, `webhook`, `commit`, `sourceHydrator` |
+| Exact single-word keys: `url`, `additionalUrls`, `installationID`, `passwordPattern` |
+
+Values must be `string`, `boolean`, `integer`, or `float` — no nested objects or lists. Multiline string values (e.g. `resource.links`) are validated as YAML.
+
+### `extra_argocd_params`
+
+Key-value pairs written into the `argocd-cmd-params-cm` ConfigMap. Keys are validated by their component prefix:
+
+| Valid component prefixes |
+|---|
+| `controller`, `server`, `reposerver`, `applicationsetcontroller`, `notificationscontroller`, `commitserver`, `dexserver`, `redis`, `repo`, `commit`, `hydrator`, `otlp`, `application`, `log` |
+
+**Example:**
+
+```json
+{
+  "config": {
+    "extra_argocd_cm_args": {
+      "kustomize.buildOptions": "--enable-helm --load-restrictor=LoadRestrictionsNone",
+      "application.resourceTrackingMethod": "annotation+label",
+      "resource.links": "- title: Resource in OpenShift's UI\n  url: https://example.com\n  if: resource.kind == \"Deployment\"\n"
+    },
+    "extra_argocd_params": {
+      "applicationsetcontroller.enable.policy.override": false
+    }
+  }
+}
+```

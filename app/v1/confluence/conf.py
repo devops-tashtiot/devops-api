@@ -9,6 +9,11 @@ class ConfluenceConfig(BaseSettings):
         description="API prefix for api exposure",
     )
 
+    API_TAGS: list[str] = Field(
+        default=["v1 - Confluence Operations"],
+        description="Tags used for OpenAPI documentation grouping.",
+    )
+    
     CONFLUENCE_ENDPOINT: str = Field(
         default="/rest/api/latest",
         description="Base REST API path for Confluence Server",
@@ -29,20 +34,17 @@ class ConfluenceConfig(BaseSettings):
         description="Confluence backup-restore REST API base path",
     )
 
-    JOB_POLL_INTERVAL: float = Field(
+    CONFLUENCE_JOB_POLL_INTERVAL: float = Field(
         default=2.0,
         description="Seconds between restore job status polls",
     )
 
-    JOB_MAX_POLLS: int = Field(
+    CONFLUENCE_JOB_MAX_POLLS: int = Field(
         default=60,
         description="Maximum poll attempts before timeout",
     )
 
-    API_TAGS: list[str] = Field(
-        default=["v1 - Confluence Operations"],
-        description="Tags used for OpenAPI documentation grouping.",
-    )
+
 
 
 config = ConfluenceConfig()

@@ -1,4 +1,5 @@
 import yaml
+import httpx
 from .schemas import ProjectSpec, StorageQuotaBytes, ProjectPermissionSpec, MemberType  # ProjectRole removed — roles fetched live from Artifactory
 from typing import Any
 from .conf import config
@@ -148,3 +149,37 @@ async def get_project_permissions(artifactory_client: Any, project_key: str) -> 
     except Exception as e:
         logger.error(f"Unexpected error fetching permissions for project {project_key}: {str(e)}")
         raise
+
+
+async def fetch_vuln_update_from_s3(file_name: str) -> bytes:
+    url = f"{global_config.ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL}/{file_name}"
+    try:
+        async with httpx.AsyncClient(verify=False, timeout=120.0) as client:
+            response = await client.get(url)
+            if response.status_code == 404:
+                raise HTTPException(status_code=404, detail=f"Vulnerability update file not found in S3: {file_name}")
+            if response.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"S3 returned {response.status_code} for {url}")
+            logger.info(f"Fetched {file_name} from S3 ({len(response.content)} bytes)")
+            return response.content
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch vulnerability update {file_name} from S3: {e}")
+        raise HTTPException(status_code=502, detail=f"S3 fetch failed: {e}")
+
+
+async def upload_xray_vulnerability_update(artifactory_client: Any, file_bytes: bytes, file_name: str) -> None:
+    endpoint = f"{config.ARTIFACTORY_XRAY_ENDPOINT}/system/offline_updates"
+    try:
+        response = await artifactory_client.post(
+            endpoint,
+            files={"file": (file_name, file_bytes, "application/octet-stream")},
+        )
+        _handle_response(response)
+        logger.info(f"Uploaded {file_name} to Xray offline vulnerability database")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to upload vulnerability update {file_name} to Xray: {e}")
+        raise HTTPException(status_code=502, detail=f"Xray vulnerability update upload failed: {e}")

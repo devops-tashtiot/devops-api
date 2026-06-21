@@ -54,7 +54,7 @@ PUT  /rest/api/latest/space/{key}/permissions/group/{admin_group}/grant  body: [
 
 ## Plugin install flow (POST /plugin/)
 
-1. Fetch `.jar` from MinIO bucket via anonymous `httpx.AsyncClient` (`S3_PLUGINS_BASE_URL/{plugin_name}`)
+1. Fetch `.jar` from MinIO bucket via anonymous `httpx.AsyncClient` (`CONFLUENCE_S3_PLUGINS_BASE_URL/{plugin_name}`)
 2. `GET /rest/plugins/1.0/?os_authType=basic` → extract `upm-token` response header
 3. `POST /rest/plugins/1.0/?token={upm_token}` with `multipart/form-data` containing the JAR
 
@@ -69,7 +69,7 @@ POST /rest/api/backup-restore/backup/space  body: {"spaceKeys": [space_key]}
   → returns {id, fileName}
 poll GET /rest/api/backup-restore/jobs/{id}  until jobState == "FINISHED"
 GET  /rest/api/backup-restore/jobs/{id}/download  → archive bytes
-PUT  S3_IMPORTS_BASE_URL/{fileName}  → upload to MinIO
+PUT  CONFLUENCE_S3_IMPORTS_BASE_URL/{fileName}  → upload to MinIO
 ```
 
 Returns `{"status": "successful", "archive_name": fileName}`.
@@ -77,7 +77,7 @@ Returns `{"status": "successful", "archive_name": fileName}`.
 ## Space import flow (POST /space-import/)
 
 ```
-GET  S3_IMPORTS_BASE_URL/{archive_name}  → fetch archive bytes from MinIO
+GET  CONFLUENCE_S3_IMPORTS_BASE_URL/{archive_name}  → fetch archive bytes from MinIO
 POST /rest/api/backup-restore/restore/space/upload  (multipart, X-Atlassian-Token: no-check)
   → returns {id}
 poll GET /rest/api/backup-restore/jobs/{id}  until jobState == "FINISHED"
@@ -98,11 +98,11 @@ POST /rest/crowd/latest/directory/{id}/synchronise  → trigger sync
 | `CONFLUENCE_UPM_ENDPOINT` | `/rest/plugins/1.0` | UPM (plugin manager) base path |
 | `CONFLUENCE_CROWD_ENDPOINT` | `/rest/crowd/latest` | Crowd user directory API |
 | `CONFLUENCE_BACKUP_RESTORE_ENDPOINT` | `/rest/api/backup-restore` | Backup/restore API |
-| `JOB_POLL_INTERVAL` | `2.0` | Seconds between restore/export job status polls |
-| `JOB_MAX_POLLS` | `60` | Max poll attempts before timeout (→ 504) |
+| `CONFLUENCE_JOB_POLL_INTERVAL` | `2.0` | Seconds between restore/export job status polls |
+| `CONFLUENCE_JOB_MAX_POLLS` | `60` | Max poll attempts before timeout (→ 504) |
 
 Global credentials (`CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) and `CONFLUENCE_API_URL` live in `global_conf.py`.  
-S3 bucket URLs (`S3_PLUGINS_BASE_URL`, `S3_IMPORTS_BASE_URL`) also live in `global_conf.py`.
+S3 bucket URLs (`CONFLUENCE_S3_PLUGINS_BASE_URL`, `CONFLUENCE_S3_IMPORTS_BASE_URL`) also live in `global_conf.py`.
 
 ## Local dev
 

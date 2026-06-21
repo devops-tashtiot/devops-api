@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
+from tashtiot_apis_library import OperationRequest
 
 
 
@@ -53,3 +54,7 @@ class ProjectSpec(BaseModel):
         if not self.admin_user and not self.admin_group:
             raise ValueError("Provide at least one of admin_user or admin_group")
         return self
+
+
+class BitbucketProjectRequest(OperationRequest):
+    spec: ProjectSpec

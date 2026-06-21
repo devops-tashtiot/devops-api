@@ -9,14 +9,14 @@ class JiraConfig(BaseSettings):
         description="API prefix for api exposure",
     )
 
-    JIRA_ENDPOINT: str = Field(
-        default="/rest/api/latest",
-        description="API endpoint for Jira",
-    )
-
     API_TAGS: list[str] = Field(
         default=["v1 - Jira Operations"],
         description="Tags used for OpenAPI documentation grouping.",
+    )
+    
+    JIRA_ENDPOINT: str = Field(
+        default="/rest/api/latest",
+        description="API endpoint for Jira",
     )
 
 

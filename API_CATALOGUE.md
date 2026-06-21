@@ -52,8 +52,8 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 | `POST` | `/space-import/` | `SpaceImportSpec` | Fetch `.zip` from S3 → upload to restore endpoint → poll job |
 
 **S3 bucket env vars:**
-- `S3_PLUGINS_BASE_URL` — default `http://localhost:9100/confluence-plugins`
-- `S3_IMPORTS_BASE_URL` — default `http://localhost:9100/confluence-space-imports`
+- `CONFLUENCE_S3_PLUGINS_BASE_URL` — default `http://localhost:9100/confluence-plugins`
+- `CONFLUENCE_S3_IMPORTS_BASE_URL` — default `http://localhost:9100/confluence-space-imports`
 
 **Key behaviour:**
 - Permission grant requires two steps: grant `read` first, then `administer`

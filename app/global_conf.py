@@ -5,8 +5,8 @@ from typing import Optional
 class DevopsStaticSettings(BaseSettings):
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-    
-    ENABLE_ARTIFACTORY_API: bool = Field(
+#======================================================artifactory=============================================    
+    ARTIFACTORY_ENABLE_API: bool = Field(
         description="enable or disable artifactory api",
         default=True,
     )
@@ -25,8 +25,14 @@ class DevopsStaticSettings(BaseSettings):
         description="ARTIFACTORY api url",
         default="https://private-artifactory.org",
     )
-    
-    ENABLE_BITBUCKET_API: bool = Field(
+    ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL: str = Field(
+    default="http://localhost:9100/xray-vulnerability-updates",
+    description="Public base URL to the S3 Xray vulnerability updates directory (no trailing slash)",
+    )
+
+#======================================================bitbucket=============================================    
+
+    BITBUCKET_ENABLE_API: bool = Field(
         description="enable or disable bitbucket api",
         default=True,
     )
@@ -46,7 +52,9 @@ class DevopsStaticSettings(BaseSettings):
         default="svc-lcl-bb-api",
     )
 
-    ENABLE_CONFLUENCE_API: bool = Field(
+#======================================================confluence=============================================    
+
+    CONFLUENCE_ENABLE_API: bool = Field(
         description="enable or disable confluence api",
         default=True,
     )
@@ -65,8 +73,18 @@ class DevopsStaticSettings(BaseSettings):
         description="CONFLUENCE username",
         default="svc-lcl-confluence-api",
     )
+    CONFLUENCE_S3_PLUGINS_BASE_URL: str = Field(
+        default="http://localhost:9100/confluence-plugins",
+        description="Public base URL to the S3 plugins directory (no trailing slash)",
+    )
+    CONFLUENCE_S3_IMPORTS_BASE_URL: str = Field(
+        default="http://localhost:9100/confluence-space-imports",
+        description="Public base URL to the S3 space-imports directory (no trailing slash)",
+    )
+#======================================================jira=============================================    
 
-    ENABLE_JIRA_API: bool = Field(
+
+    JIRA_ENABLE_API: bool = Field(
         description="enable or disable jira api",
         default=True,
     )
@@ -76,24 +94,21 @@ class DevopsStaticSettings(BaseSettings):
         default="https://private-jira.org",
     )
 
-    JIRA_PASSWORD: str = Field(
-        description="Jira username's password",
-        default="sheker",
-    )
-
     JIRA_USERNAME: str = Field(
         description="Jira username",
         default="svc-lcl-jira-api",
     )
 
-    ENABLE_SONARQUBE_API: bool = Field(
-        description="enable or disable sonarqube api",
-        default=True,
+    JIRA_PASSWORD: str = Field(
+        description="Jira username's password",
+        default="sheker",
     )
 
-    SONARQUBE_PASSWORD: str = Field(
-        description="SonarQube admin password",
-        default="sheker",
+#======================================================sonarqube=============================================    
+
+    SONARQUBE_ENABLE_API: bool = Field(
+        description="enable or disable sonarqube api",
+        default=True,
     )
 
     SONARQUBE_USERNAME: str = Field(
@@ -101,7 +116,23 @@ class DevopsStaticSettings(BaseSettings):
         default="admin",
     )
 
-    ENABLE_ARGOCD_API: bool = Field(
+    SONARQUBE_ALLOWED_SIZES: list[str] = Field(
+        default=["default", "medium", "big"],
+        description="SonarQube instance sizes available in this deployment",
+    )
+    SONARQUBE_PASSWORD: str = Field(
+        description="SonarQube admin password",
+        default="sheker",
+    )
+
+    SONARQUBE_AAS_REPO_SLUG: str = Field(
+        default="sonarqube-as-a-service",
+        description="Bitbucket repo slug for the SonarQube GitOps consumer configs",
+    )
+
+#======================================================argocd=============================================    
+
+    ARGOCD_ENABLE_API: bool = Field(
         description="enable or disable argocd consumer config api",
         default=True,
     )
@@ -111,7 +142,27 @@ class DevopsStaticSettings(BaseSettings):
         default=["prod", "dr", "int"],
         description="Environments allowed in this network deployment",
     )
+    ARGOCD_CLUSTER_SECRET_REPO_URL: str = Field(
+        description="Full Git URL of the repo containing the cluster-secret Helm chart",
+        default="https://private-bitbucket.org/scm/DEVOPS/argocd-configs.git",
+    )
 
+    ARGOCD_AAS_REPO_SLUG: str = Field(
+        default="argocd",
+        description="Bitbucket repo slug where ArgoCD consumer configs are stored",
+    )
+
+    ARGOCD_ALLOWED_SIZES: list[str] = Field(
+        default=["extraLarge", "large", "medium", "small"],
+        description="ArgoCD instance sizes available in this deployment",
+    )
+
+    ARGOCD_ALLOWED_RESOURCES: list[str] = Field(
+        default=["ExternalSecret", "ConfigMap", "Deployment"],
+        description="Kubernetes resource kinds allowed in include_resources",
+    )
+
+#=========================================================gitops-connector=======================================
 # for working against gitops repos
     GIT_API_URL: str = Field(
         description="Git (Bitbucket) server URL",
@@ -132,36 +183,24 @@ class DevopsStaticSettings(BaseSettings):
         description="Bitbucket project key containing the target repo",
         default="DEVOPS",
     )
-
-    ARGOCD_CLUSTER_SECRET_REPO_URL: str = Field(
-        description="Full Git URL of the repo containing the cluster-secret Helm chart",
-        default="https://private-bitbucket.org/scm/DEVOPS/argocd-configs.git",
+#should be mounted to the deployment
+    GIT_SSH_KEY_PATH: str = Field(
+        description="Path to the SSH private key used by the Git connector",
+        default="/etc/.ssh/private_key",
     )
+    GIT_SSH_PORT: str = Field(
+        description="SSH Port used by the Git connector",
+        default="7999",
+    )
+
+#======================================================general=============================================    
 
     DOMAIN_SUFFIX: str = Field(
         default="app.iaf",
         description="Shared domain suffix used across services — e.g. ArgoCD: https://{name}-argocd.{DOMAIN_SUFFIX}, SonarQube: https://{consumer}.sonarqube.{DOMAIN_SUFFIX}",
     )
 
-    GIT_SSH_KEY_PATH: str = Field(
-        description="Path to the SSH private key used by the Git connector",
-        default="/etc/.ssh/private_key",
-    )
 
-    S3_IMPORTS_BASE_URL: str = Field(
-        default="http://localhost:9100/confluence-space-imports",
-        description="Public base URL to the S3 space-imports directory (no trailing slash)",
-    )
-
-    ENABLE_CONFLUENCE_PLUGIN_API: bool = Field(
-        description="enable or disable confluence plugin api",
-        default=True,
-    )
-
-    S3_PLUGINS_BASE_URL: str = Field(
-        default="http://localhost:9100/confluence-plugins",
-        description="Public base URL to the S3 plugins directory (no trailing slash)",
-    )
 
 
 global_config = DevopsStaticSettings()

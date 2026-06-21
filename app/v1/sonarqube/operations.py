@@ -1,10 +1,12 @@
 from typing import Any
 
+import yaml
 from fastapi import HTTPException
 from loguru import logger
+from tashtiot_apis_library import Git
 
 from .conf import config
-from .schemas import GroupSpec
+from .schemas import GroupSpec, SonarQubeConsumerSpec, SonarQubeConsumerUpdateSpec, SonarQubeSizeEnum
 
 SONARQUBE_GLOBAL_PERMISSIONS = config.SONARQUBE_GLOBAL_PERMISSIONS
 SONARQUBE_TEMPLATE_PERMISSIONS = config.SONARQUBE_TEMPLATE_PERMISSIONS
@@ -48,6 +50,45 @@ async def assign_global_permissions(sonarqube_client: Any, payload: GroupSpec):
             _handle_response(response)
     except Exception as e:
         logger.error(f"Unexpected error assigning global permissions to group {name}: {str(e)}")
+        raise
+
+
+async def create_sonarqube_consumer(git: Git, payload: SonarQubeConsumerSpec) -> None:
+    path = f"consumers/{payload.name}/config.yaml"
+    data: dict = {"name": payload.name}
+    if payload.plugins_list:
+        data["plugins_list"] = ", ".join(payload.plugins_list)
+    if payload.size != SonarQubeSizeEnum.default:
+        data["size"] = payload.size.value
+    content = yaml.dump(data, default_flow_style=False, sort_keys=False)
+    try:
+        await git.add_file(path, f"Add sonarqube consumer config for {payload.name}", content)
+    except Exception as e:
+        logger.error(f"Unexpected error creating sonarqube consumer config {payload.name}: {str(e)}")
+        raise
+
+
+async def update_sonarqube_consumer(git: Git, name: str, payload: SonarQubeConsumerUpdateSpec) -> None:
+    path = f"consumers/{name}/config.yaml"
+    data: dict = {"name": name}
+    if payload.plugins_list:
+        data["plugins_list"] = ", ".join(payload.plugins_list)
+    if payload.size != SonarQubeSizeEnum.default:
+        data["size"] = payload.size.value
+    content = yaml.dump(data, default_flow_style=False, sort_keys=False)
+    try:
+        await git.update_file(path, f"Update sonarqube consumer config for {name}", content)
+    except Exception as e:
+        logger.error(f"Unexpected error updating sonarqube consumer config {name}: {str(e)}")
+        raise
+
+
+async def delete_sonarqube_consumer(git: Git, name: str) -> None:
+    path = f"consumers/{name}/config.yaml"
+    try:
+        await git.delete_file(path, f"Delete sonarqube consumer config for {name}")
+    except Exception as e:
+        logger.error(f"Unexpected error deleting sonarqube consumer config {name}: {str(e)}")
         raise
 
 

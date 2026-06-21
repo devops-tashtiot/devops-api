@@ -148,8 +148,22 @@ async def create_consumer_config(git: Git, payload: ConsumerConfigSpec) -> None:
         "include_resources": [r.value for r in payload.include_resources],
         "ad_admin_group": payload.ad_admin_group,
     }
-    if payload.extra_roles:
-        data["extra_roles"] = payload.extra_roles
+    all_rbac: list[str] = []
+    for line in (payload.g_lines or []):
+        all_rbac.append(line.to_rbac())
+    for line in (payload.p_lines or []):
+        all_rbac.append(line.to_rbac())
+    all_rbac.extend(payload.extra_roles or [])
+    if all_rbac:
+        data["extra_roles"] = all_rbac
+    if payload.config:
+        config_data: dict = {}
+        if payload.config.extra_argocd_cm_args:
+            config_data["extra_argocd_cm_args"] = dict(payload.config.extra_argocd_cm_args)
+        if payload.config.extra_argocd_params:
+            config_data["extra_argocd_params"] = dict(payload.config.extra_argocd_params)
+        if config_data:
+            data["config"] = config_data
     content = yaml.dump(data, default_flow_style=False, sort_keys=False)
     try:
         await git.add_file(path, f"Add consumer config for {payload.name}", content)

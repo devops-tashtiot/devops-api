@@ -7,7 +7,14 @@ from app.v1.confluence.conf import config
 from app.v1.confluence.routes import get_v1_confluence_router
 
 PREFIX = config.API_PREFIX
-VALID_PAYLOAD = {"space_key": "MYSP"}
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+VALID_PAYLOAD = {"metadata": VALID_METADATA, "spec": {"space_key": "MYSP"}}
 FAKE_ARCHIVE_NAME = "Confluence-space-export-MYSP-2026-01-01-00-00-00-000.xml.zip"
 FAKE_ZIP = b"PK\x03\x04fake-zip-content"
 

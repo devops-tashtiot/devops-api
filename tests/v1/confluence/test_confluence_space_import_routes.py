@@ -8,7 +8,14 @@ from app.v1.confluence.routes import get_v1_confluence_router
 
 PREFIX = config.API_PREFIX
 FAKE_ZIP = b"PK\x03\x04fake-zip-content"
-VALID_PAYLOAD = {"space_key": "MYSP", "archive_name": "my-space-export.zip"}
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+VALID_PAYLOAD = {"metadata": VALID_METADATA, "spec": {"space_key": "MYSP", "archive_name": "my-space-export.zip"}}
 
 
 @pytest.fixture

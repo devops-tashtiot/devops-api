@@ -16,6 +16,15 @@ def mock_sonar_client():
     return client
 
 
+@pytest.fixture
+def mock_git():
+    git = MagicMock()
+    git.add_file = AsyncMock(return_value=None)
+    git.update_file = AsyncMock(return_value=None)
+    git.delete_file = AsyncMock(return_value=None)
+    return git
+
+
 @pytest.fixture(autouse=True)
 def patch_base_api(mock_sonar_client):
     """Routes build their own httpx client via BaseAPI; patch it to return the shared mock."""
@@ -25,7 +34,7 @@ def patch_base_api(mock_sonar_client):
 
 
 @pytest.fixture
-def client():
+def client(mock_git):
     app = FastAPI()
-    app.include_router(get_v1_sonarqube_router())
+    app.include_router(get_v1_sonarqube_router(mock_git))
     return TestClient(app)

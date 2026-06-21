@@ -8,7 +8,14 @@ from app.v1.confluence.routes import get_v1_confluence_router
 
 PREFIX = config.API_PREFIX
 FAKE_UPM_TOKEN = "test-upm-token-123"
-VALID_PAYLOAD = {"plugin_name": "my-plugin-1.0.jar"}
+VALID_METADATA = {
+    "project": "test-project",
+    "network": "test-network",
+    "region": "test-region",
+    "space": "test-space",
+    "environment": "test-env",
+}
+VALID_PAYLOAD = {"metadata": VALID_METADATA, "spec": {"plugin_name": "my-plugin-1.0.jar"}}
 
 
 def test_install_plugin_returns_200(client, mock_s3_http):
