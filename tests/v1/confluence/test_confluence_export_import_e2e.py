@@ -135,7 +135,7 @@ def test_export_import_full_flow(confluence, api):
     assert archive_name.endswith(".zip"), f"Unexpected archive_name: {archive_name}"
 
     # --- step 5: verify the archive is actually in MinIO ---
-    r = httpx.get(f"http://localhost:9100/confluence-space-imports/{archive_name}", timeout=10)
+    r = httpx.get(f"http://localhost:9100/platform-clients/confluence-space-imports/{archive_name}", timeout=10)
     assert r.status_code == 200, f"Archive not found in MinIO: {archive_name}"
     assert len(r.content) > 0
 

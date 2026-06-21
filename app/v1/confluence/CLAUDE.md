@@ -19,7 +19,7 @@ Passed into `get_v1_confluence_router(confluence_client)` at startup — no per-
 | `POST` | `/plugin/` | Install plugin from S3 via UPM |
 | `DELETE` | `/plugin/{plugin_key:path}` | Uninstall plugin by OSGi key |
 | `GET` | `/user-dirs` | List Crowd user directories |
-| `POST` | `/user-dirs/{directory_id}/sync` | Sync a Crowd user directory |
+| `POST` | `/user-dirs/sync` | Sync the single Crowd user directory (ID auto-discovered) |
 | `POST` | `/space-export/` | Export space to S3 |
 | `POST` | `/space-import/` | Import space from S3 |
 
@@ -54,7 +54,7 @@ PUT  /rest/api/latest/space/{key}/permissions/group/{admin_group}/grant  body: [
 
 ## Plugin install flow (POST /plugin/)
 
-1. Fetch `.jar` from MinIO bucket via anonymous `httpx.AsyncClient` (`CONFLUENCE_S3_PLUGINS_BASE_URL/{plugin_name}`)
+1. Fetch `.jar` from the public `platform-clients` MinIO bucket via anonymous `httpx.AsyncClient` (`CONFLUENCE_S3_PLUGINS_BASE_URL/{plugin_name}`, subfolder `confluence-plugins/`)
 2. `GET /rest/plugins/1.0/?os_authType=basic` → extract `upm-token` response header
 3. `POST /rest/plugins/1.0/?token={upm_token}` with `multipart/form-data` containing the JAR
 
@@ -69,7 +69,7 @@ POST /rest/api/backup-restore/backup/space  body: {"spaceKeys": [space_key]}
   → returns {id, fileName}
 poll GET /rest/api/backup-restore/jobs/{id}  until jobState == "FINISHED"
 GET  /rest/api/backup-restore/jobs/{id}/download  → archive bytes
-PUT  CONFLUENCE_S3_IMPORTS_BASE_URL/{fileName}  → upload to MinIO
+PUT  CONFLUENCE_S3_IMPORTS_BASE_URL/{fileName}  → upload to MinIO (platform-clients/confluence-space-imports/)
 ```
 
 Returns `{"status": "successful", "archive_name": fileName}`.
@@ -77,17 +77,19 @@ Returns `{"status": "successful", "archive_name": fileName}`.
 ## Space import flow (POST /space-import/)
 
 ```
-GET  CONFLUENCE_S3_IMPORTS_BASE_URL/{archive_name}  → fetch archive bytes from MinIO
+GET  CONFLUENCE_S3_IMPORTS_BASE_URL/{archive_name}  → fetch archive bytes from MinIO (platform-clients/confluence-space-imports/)
 POST /rest/api/backup-restore/restore/space/upload  (multipart, X-Atlassian-Token: no-check)
   → returns {id}
 poll GET /rest/api/backup-restore/jobs/{id}  until jobState == "FINISHED"
+
+`space_key` is not in the schema — Confluence restores the space key directly from the archive and provides no way to override it.
 ```
 
 ## User directories (Crowd REST API)
 
 ```
-GET  /rest/crowd/latest/directory               → list all directories
-POST /rest/crowd/latest/directory/{id}/synchronise  → trigger sync
+GET  /rest/crowd/latest/directory               → list all directories (auto-selects first)
+POST /rest/crowd/latest/directory/{id}/synchronise  → trigger sync (id taken from list response)
 ```
 
 ## Config fields (`conf.py`)
@@ -102,7 +104,7 @@ POST /rest/crowd/latest/directory/{id}/synchronise  → trigger sync
 | `CONFLUENCE_JOB_MAX_POLLS` | `60` | Max poll attempts before timeout (→ 504) |
 
 Global credentials (`CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) and `CONFLUENCE_API_URL` live in `global_conf.py`.  
-S3 bucket URLs (`CONFLUENCE_S3_PLUGINS_BASE_URL`, `CONFLUENCE_S3_IMPORTS_BASE_URL`) also live in `global_conf.py`.
+S3 bucket URLs (`CONFLUENCE_S3_PLUGINS_BASE_URL`, `CONFLUENCE_S3_IMPORTS_BASE_URL`) also live in `global_conf.py`. Both point into the public **`platform-clients`** bucket (`confluence-plugins/` and `confluence-space-imports/` subfolders).
 
 ## Local dev
 

@@ -17,7 +17,7 @@ Passed into `get_v1_jira_router(jira_client)` at startup — no per-request reco
 | `POST` | `/` | Create project + assign admin (user and/or group) |
 | `DELETE` | `/{project_key}` | Delete project |
 | `GET` | `/user-dirs` | List user directories |
-| `POST` | `/user-dirs/{directory_id}/sync` | Sync a user directory |
+| `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
 ## Project create flow (POST /)
 

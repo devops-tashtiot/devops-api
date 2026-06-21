@@ -1,3 +1,5 @@
+import base64
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
@@ -6,7 +8,6 @@ from typing import Any
 from .conf import config
 from .operations import (
     create_space,
-    decode_file_content,
     delete_space,
     assign_space_admin,
     assign_space_group_admin,
@@ -23,6 +24,7 @@ from .operations import (
     poll_export_job,
     download_export,
     upload_archive_to_s3,
+    upload_plugin_to_s3,
 )
 
 
@@ -82,34 +84,34 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
 
-    @router.post("/plugin/upload", name="install confluence plugin from upload", status_code=200)
-    async def install_confluence_plugin_from_upload(payload: ConfluencePluginUploadRequest) -> JSONResponse:
+    @router.post("/plugin/upload", name="upload confluence plugin to MinIO", status_code=200)
+    async def upload_confluence_plugin(payload: ConfluencePluginUploadRequest) -> JSONResponse:
         try:
-            plugin_bytes = decode_file_content(payload.spec.file_content)
-            upm_token = await get_upm_token(confluence_client)
-            await install_plugin(confluence_client, plugin_bytes, "plugin.jar", upm_token)
-            return SuccessResponse(status="successful")
+            data_url = payload.spec.file_content
+            raw = data_url.split(",", 1)[1] if "," in data_url else data_url
+            await upload_plugin_to_s3(base64.b64decode(raw), payload.spec.plugin_name)
+            return JSONResponse({"status": "successful", "plugin_name": payload.spec.plugin_name})
         except HTTPException as external_error:
             return JSONResponse(
                 ExceptionResponse(
-                    stdout=f"Exception in Confluence Plugin Install. {external_error.detail}",
+                    stdout=f"Exception uploading plugin. {external_error.detail}",
                     status="Failed",
                     status_code=external_error.status_code,
                 ).dict(),
                 status_code=external_error.status_code,
             )
 
-    @router.post("/space-import/upload", name="import confluence space from upload", status_code=200)
-    async def import_confluence_space_from_upload(payload: ConfluenceSpaceImportUploadRequest) -> JSONResponse:
+    @router.post("/space-import/upload", name="upload confluence space archive to MinIO", status_code=200)
+    async def upload_confluence_space_archive(payload: ConfluenceSpaceImportUploadRequest) -> JSONResponse:
         try:
-            archive_bytes = decode_file_content(payload.spec.file_content)
-            job_id = await upload_archive_and_start_restore(confluence_client, archive_bytes, "space-import.zip")
-            await poll_restore_job(confluence_client, job_id)
-            return SuccessResponse(status="successful")
+            data_url = payload.spec.file_content
+            raw = data_url.split(",", 1)[1] if "," in data_url else data_url
+            await upload_archive_to_s3(base64.b64decode(raw), payload.spec.archive_name)
+            return JSONResponse({"status": "successful", "archive_name": payload.spec.archive_name})
         except HTTPException as external_error:
             return JSONResponse(
                 ExceptionResponse(
-                    stdout=f"Exception in Confluence Space Import. {external_error.detail}",
+                    stdout=f"Exception uploading space archive. {external_error.detail}",
                     status="Failed",
                     status_code=external_error.status_code,
                 ).dict(),
@@ -181,10 +183,10 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
 
-    @router.post("/user-dirs/{directory_id}/sync", name="sync user directory", status_code=200)
-    async def sync_directory(directory_id: int) -> JSONResponse:
+    @router.post("/user-dirs/sync", name="sync user directory", status_code=200)
+    async def sync_directory() -> JSONResponse:
         try:
-            await sync_user_directory(confluence_client, directory_id)
+            await sync_user_directory(confluence_client)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(

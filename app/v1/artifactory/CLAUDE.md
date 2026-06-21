@@ -116,7 +116,7 @@ GET /access/api/v1/projects/{project_key}/groups  → groups
 ### Xray air-gapped vulnerability update — `POST /xray/vulnerability-update`
 
 Flow:
-1. Fetch the update archive from MinIO (`ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL/{file_name}`) via anonymous `httpx.AsyncClient`
+1. Fetch the update archive from MinIO (`ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL/{file_name}`) via anonymous `httpx.AsyncClient` — bucket: `platform-devops-team`, subfolder: `xray-vulnerability-updates/`
 2. POST it to Xray as `multipart/form-data`:
 
 ```
@@ -125,7 +125,7 @@ files={"file": (file_name, file_bytes, "application/octet-stream")}
 → 200
 ```
 
-The archive must be pre-uploaded to the MinIO `xray-vulnerability-updates` bucket before calling this endpoint.
+The archive must be pre-uploaded to the `platform-devops-team/xray-vulnerability-updates/` subfolder in MinIO before calling this endpoint.
 
 ## Schemas
 
@@ -158,7 +158,7 @@ The archive must be pre-uploaded to the MinIO `xray-vulnerability-updates` bucke
 
 | Field | Type | Constraints |
 |---|---|---|
-| `file_name` | `str` | required; `^[a-zA-Z0-9_\-\.]+$`; 1–255 chars; archive must exist in the `xray-vulnerability-updates` S3 bucket |
+| `file_name` | `str` | required; `^[a-zA-Z0-9_\-\.]+$`; 1–255 chars; archive must exist in `platform-devops-team/xray-vulnerability-updates/` in MinIO |
 
 ## Config fields (`conf.py`)
 

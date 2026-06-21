@@ -26,8 +26,8 @@ class DevopsStaticSettings(BaseSettings):
         default="https://private-artifactory.org",
     )
     ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL: str = Field(
-    default="http://localhost:9100/xray-vulnerability-updates",
-    description="Public base URL to the S3 Xray vulnerability updates directory (no trailing slash)",
+        default="http://localhost:9100/platform-devops-team/xray-vulnerability-updates",
+        description="Base URL to the xray-vulnerability-updates subfolder inside the platform-devops-team bucket (no trailing slash)",
     )
 
 #======================================================bitbucket=============================================    
@@ -74,12 +74,12 @@ class DevopsStaticSettings(BaseSettings):
         default="svc-lcl-confluence-api",
     )
     CONFLUENCE_S3_PLUGINS_BASE_URL: str = Field(
-        default="http://localhost:9100/confluence-plugins",
-        description="Public base URL to the S3 plugins directory (no trailing slash)",
+        default="http://localhost:9100/platform-clients/confluence-plugins",
+        description="Base URL to the confluence-plugins subfolder inside the public platform-clients bucket (no trailing slash)",
     )
     CONFLUENCE_S3_IMPORTS_BASE_URL: str = Field(
-        default="http://localhost:9100/confluence-space-imports",
-        description="Public base URL to the S3 space-imports directory (no trailing slash)",
+        default="http://localhost:9100/platform-clients/confluence-space-imports",
+        description="Base URL to the confluence-space-imports subfolder inside the public platform-clients bucket (no trailing slash)",
     )
 #======================================================jira=============================================    
 

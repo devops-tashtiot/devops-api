@@ -67,13 +67,6 @@ class PluginInstallSpec(BaseModel):
 
 
 class SpaceImportSpec(BaseModel):
-    space_key: str = Field(
-        ...,
-        description="Key of the space to restore (must match the key inside the archive)",
-        min_length=1,
-        max_length=50,
-        pattern=r"^[A-Z][A-Z0-9]*$",
-    )
     archive_name: str = Field(
         ...,
         description="Filename of the .zip archive already uploaded to the S3 imports bucket",
@@ -99,19 +92,45 @@ class SpaceExportSpec(BaseModel):
 
 
 class PluginUploadSpec(BaseModel):
+    plugin_name: str = Field(
+        ...,
+        description="Filename to store in S3 (must end with .jar)",
+        min_length=5,
+        max_length=255,
+        pattern=r"^[a-zA-Z0-9][a-zA-Z0-9\-\._]*$",
+    )
     file_content: str = Field(
         ...,
         description="Base64-encoded .jar file (data-URL format accepted)",
         min_length=1,
     )
 
+    @field_validator("plugin_name")
+    @classmethod
+    def must_be_jar(cls, v: str) -> str:
+        if not v.lower().endswith(".jar"):
+            raise ValueError("plugin_name must end with .jar")
+        return v
+
 
 class SpaceImportUploadSpec(BaseModel):
+    archive_name: str = Field(
+        ...,
+        description="Filename to store in S3 (must end with .zip)",
+        min_length=5,
+        max_length=255,
+    )
     file_content: str = Field(
         ...,
         description="Base64-encoded .zip archive (data-URL format accepted)",
         min_length=1,
     )
+
+    @model_validator(mode="after")
+    def archive_must_be_zip(self) -> "SpaceImportUploadSpec":
+        if not self.archive_name.lower().endswith(".zip"):
+            raise ValueError("archive_name must end with .zip")
+        return self
 
 
 class ConfluenceSpaceRequest(OperationRequest):

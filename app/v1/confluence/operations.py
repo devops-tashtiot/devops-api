@@ -1,5 +1,4 @@
 import asyncio
-import base64
 from typing import Any
 
 import httpx
@@ -9,13 +8,7 @@ from loguru import logger
 from .conf import config
 from .schemas import PluginInstallSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec
 from app.global_conf import global_config
-
-
-def decode_file_content(file_content: str) -> bytes:
-    # strips the data-URL prefix (data:<mime>;base64,) if present
-    if "," in file_content:
-        file_content = file_content.split(",", 1)[1]
-    return base64.b64decode(file_content)
+from app.helpers import fetch_from_s3
 
 
 def _handle_response(response):
@@ -87,20 +80,7 @@ async def assign_space_group_admin(confluence_client: Any, payload: SpaceSpec):
 
 async def fetch_plugin_from_public_s3(payload: PluginInstallSpec) -> bytes:
     url = f"{global_config.CONFLUENCE_S3_PLUGINS_BASE_URL}/{payload.plugin_name}"
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-            response = await client.get(url)
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail=f"Plugin not found in S3: {payload.plugin_name}")
-            if response.status_code != 200:
-                raise HTTPException(status_code=502, detail=f"S3 returned {response.status_code} for {url}")
-            logger.info(f"Fetched {payload.plugin_name} from S3 ({len(response.content)} bytes)")
-            return response.content
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to fetch plugin {payload.plugin_name} from S3: {e}")
-        raise HTTPException(status_code=502, detail=f"S3 fetch failed: {e}")
+    return await fetch_from_s3(url, label=payload.plugin_name)
 
 
 async def get_upm_token(confluence_client: Any) -> str:
@@ -147,7 +127,11 @@ async def list_user_directories(confluence_client: Any) -> list[dict]:
         raise
 
 
-async def sync_user_directory(confluence_client: Any, directory_id: int) -> None:
+async def sync_user_directory(confluence_client: Any) -> None:
+    directories = await list_user_directories(confluence_client)
+    if not directories:
+        raise HTTPException(status_code=404, detail="No user directories found in Confluence")
+    directory_id = directories[0]["id"]
     endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
     try:
         response = await confluence_client.post(endpoint, headers={"Accept": "application/json"})
@@ -246,22 +230,30 @@ async def upload_archive_to_s3(archive_bytes: bytes, archive_name: str) -> None:
         raise HTTPException(status_code=502, detail=f"S3 upload failed: {e}")
 
 
-async def fetch_archive_from_s3(payload: SpaceImportSpec) -> bytes:
-    url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{payload.archive_name}"
+async def upload_plugin_to_s3(plugin_bytes: bytes, plugin_name: str) -> None:
+    url = f"{global_config.CONFLUENCE_S3_PLUGINS_BASE_URL}/{plugin_name}"
     try:
         async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-            response = await client.get(url)
-            if response.status_code == 404:
-                raise HTTPException(status_code=404, detail=f"Archive not found in S3: {payload.archive_name}")
-            if response.status_code != 200:
-                raise HTTPException(status_code=502, detail=f"S3 returned {response.status_code} for {url}")
-            logger.info(f"Fetched {payload.archive_name} from S3 ({len(response.content)} bytes)")
-            return response.content
+            response = await client.put(
+                url,
+                content=plugin_bytes,
+                headers={"Content-Type": "application/java-archive"},
+            )
+            if response.status_code not in (200, 204):
+                raise HTTPException(status_code=502, detail=f"S3 upload returned {response.status_code}")
+            logger.info(f"Uploaded plugin {plugin_name} to S3 ({len(plugin_bytes)} bytes)")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to fetch archive {payload.archive_name} from S3: {e}")
-        raise HTTPException(status_code=502, detail=f"S3 fetch failed: {e}")
+        logger.error(f"Failed to upload plugin {plugin_name} to S3: {e}")
+        raise HTTPException(status_code=502, detail=f"S3 plugin upload failed: {e}")
+
+
+
+
+async def fetch_archive_from_s3(payload: SpaceImportSpec) -> bytes:
+    url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{payload.archive_name}"
+    return await fetch_from_s3(url, label=payload.archive_name)
 
 
 async def upload_archive_and_start_restore(confluence_client: Any, archive_bytes: bytes, archive_name: str) -> int:

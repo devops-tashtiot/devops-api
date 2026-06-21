@@ -68,10 +68,10 @@ def get_v1_jira_router(jira_client: Any):
                 status_code=external_error.status_code,
             )
 
-    @router.post("/user-dirs/{directory_id}/sync", name="sync user directory", status_code=200)
-    async def sync_directory(directory_id: int) -> JSONResponse:
+    @router.post("/user-dirs/sync", name="sync user directory", status_code=200)
+    async def sync_directory() -> JSONResponse:
         try:
-            await sync_user_directory(jira_client, directory_id)
+            await sync_user_directory(jira_client)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(

@@ -70,7 +70,11 @@ async def list_user_directories(bitbucket_client: Any) -> list[dict]:
         raise
 
 
-async def sync_user_directory(bitbucket_client: Any, directory_id: int) -> None:
+async def sync_user_directory(bitbucket_client: Any) -> None:
+    directories = await list_user_directories(bitbucket_client)
+    if not directories:
+        raise HTTPException(status_code=404, detail="No user directories found in Bitbucket")
+    directory_id = directories[0]["id"]
     endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-dirs/{directory_id}/sync"
     try:
         response = await bitbucket_client.post(endpoint)

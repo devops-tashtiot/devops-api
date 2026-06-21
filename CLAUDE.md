@@ -446,8 +446,8 @@ if global_config.ENABLE_<SERVICE>_API:
 3. API polls `/rest/api/backup-restore/jobs/{id}` until `jobState == "FINISHED"` or timeout
 
 **Key env vars** (in `app/v1/confluence/conf.py`):
-- `CONFLUENCE_S3_PLUGINS_BASE_URL` — bucket URL for plugins (default: `http://localhost:9100/confluence-plugins`)
-- `CONFLUENCE_S3_IMPORTS_BASE_URL` — bucket URL for space archives (default: `http://localhost:9100/confluence-space-imports`)
+- `CONFLUENCE_S3_PLUGINS_BASE_URL` — bucket URL for plugins (default: `http://localhost:9100/platform-clients/confluence-plugins`)
+- `CONFLUENCE_S3_IMPORTS_BASE_URL` — bucket URL for space archives (default: `http://localhost:9100/platform-clients/confluence-space-imports`)
 - `CONFLUENCE_UPM_ENDPOINT` — UPM base path (default: `/rest/plugins/1.0`)
 - `CONFLUENCE_JOB_POLL_INTERVAL` / `CONFLUENCE_JOB_MAX_POLLS` — restore job polling config
 
