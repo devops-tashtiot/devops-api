@@ -45,7 +45,7 @@ Deletes a Jira project by key.
 
 Returns all user directories configured in Jira (including AD/LDAP directories).
 
-**Response** — JSON array from Jira's `/rest/api/latest/admin/user-dirs`.
+**Response** — JSON array from Jira's `/rest/api/latest/admin/user-directories`.
 
 ---
 

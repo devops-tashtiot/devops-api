@@ -33,7 +33,7 @@ Rolls back (deletes the project) automatically if any permission step fails.
 
 Returns all user directories configured in Bitbucket (including AD/LDAP directories).
 
-**Response** — JSON array from Bitbucket's `/rest/api/latest/admin/user-dirs`.
+**Response** — JSON array from Bitbucket's `/rest/api/1.0/admin/user-directories`.
 
 ---
 

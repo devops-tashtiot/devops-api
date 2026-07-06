@@ -65,7 +65,7 @@ async def assign_project_admin_group(jira_client: Any, payload: ProjectSpec) -> 
 
 
 async def list_user_directories(jira_client: Any) -> list[dict]:
-    endpoint = f"{config.JIRA_ENDPOINT}/admin/user-dirs"
+    endpoint = f"{config.JIRA_ENDPOINT}/admin/user-directories"
     try:
         response = await jira_client.get(endpoint)
         _handle_response(response)
@@ -80,7 +80,7 @@ async def sync_user_directory(jira_client: Any) -> None:
     if not directories:
         raise HTTPException(status_code=404, detail="No user directories found in Jira")
     directory_id = directories[0]["id"]
-    endpoint = f"{config.JIRA_ENDPOINT}/admin/user-dirs/{directory_id}/sync"
+    endpoint = f"{config.JIRA_ENDPOINT}/admin/user-directories/{directory_id}/sync"
     try:
         response = await jira_client.post(endpoint)
         _handle_response(response)

@@ -19,6 +19,8 @@ Passed into `get_v1_jira_router(jira_client)` at startup — no per-request reco
 | `GET` | `/user-dirs` | List user directories |
 | `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
+> Route paths above are devops-api's own; the upstream Jira endpoints they call are `/rest/api/latest/admin/user-directories` (see below).
+
 ## Project create flow (POST /)
 
 ```
@@ -66,18 +68,20 @@ Body: {"group": [admin_group]}
 → 200
 ```
 
-### List user directories — `GET /rest/api/latest/admin/user-dirs`
+### List user directories — `GET /rest/api/latest/admin/user-directories`
 
 ```
-GET /rest/api/latest/admin/user-dirs
+GET /rest/api/latest/admin/user-directories
 → 200, JSON array of directory objects
 ```
 
-### Sync user directory — `POST /rest/api/latest/admin/user-dirs/{id}/sync`
+Note: the path is `user-directories` (plural), not `user-dirs` — the latter 404s. Confirmed against a live Bitbucket Server 8.19.5 instance, which shares the same underlying Atlassian admin REST API convention; there's no local Jira compose file to independently verify against (see "Local dev" below), so this is a same-convention fix, not a Jira-specific confirmation.
+
+### Sync user directory — `POST /rest/api/latest/admin/user-directories/{id}/sync`
 
 ```
-POST /rest/api/latest/admin/user-dirs/{id}/sync
-→ 200/204
+POST /rest/api/latest/admin/user-directories/{id}/sync
+→ 200/204 (unverified)
 ```
 
 ## Schema — `ProjectSpec`

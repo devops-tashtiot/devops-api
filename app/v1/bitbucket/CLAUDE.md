@@ -19,6 +19,8 @@ Passed into `get_v1_bitbucket_router(bitbucket_client)` at startup — no per-re
 | `GET` | `/user-dirs` | List user directories |
 | `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
+> Route paths above are devops-api's own; the upstream Bitbucket endpoints they call are `/rest/api/1.0/admin/user-directories` (see below).
+
 ## Project create flow (POST /)
 
 ```
@@ -77,23 +79,23 @@ PUT /rest/api/latest/projects/{key}/permissions/groups?name={admin_group}&permis
 → 204
 ```
 
-### List user directories — `GET /rest/api/latest/admin/user-dirs`
+### List user directories — `GET /rest/api/1.0/admin/user-directories`
 
 ```
-GET /rest/api/latest/admin/user-dirs
+GET /rest/api/1.0/admin/user-directories
 → 200, JSON array of directory objects
 ```
 
-Note: returns 404 on Bitbucket Server 8.19.5 local — skip during local verification.
+Note: the path is `user-directories` (plural), not `user-dirs` — the latter 404s. Confirmed working against Bitbucket Server 8.19.5 local.
 
-### Sync user directory — `POST /rest/api/latest/admin/user-dirs/{id}/sync`
+### Sync user directory — `POST /rest/api/1.0/admin/user-directories/{id}/sync`
 
 ```
-POST /rest/api/latest/admin/user-dirs/{id}/sync
-→ 200/204
+POST /rest/api/1.0/admin/user-directories/{id}/sync
+→ 200/204 (unverified)
 ```
 
-Note: also returns 404 on Bitbucket Server 8.19.5 local — skip during local verification.
+Note: this path is a best-effort rename to match the corrected collection path above — it 404s against Bitbucket Server 8.19.5 local, but that instance only has the built-in `INTERNAL` directory (sync only applies to connector/LDAP-type directories), so a genuine sync target was never available to confirm the correct path against. Re-verify once a real LDAP directory exists.
 
 ## Schema — `ProjectSpec`
 

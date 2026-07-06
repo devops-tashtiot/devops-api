@@ -60,7 +60,7 @@ async def assign_admin_permission(bitbucket_client: Any, payload: ProjectSpec):
 
 
 async def list_user_directories(bitbucket_client: Any) -> list[dict]:
-    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-dirs"
+    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-directories"
     try:
         response = await bitbucket_client.get(endpoint)
         _handle_response(response)
@@ -75,7 +75,7 @@ async def sync_user_directory(bitbucket_client: Any) -> None:
     if not directories:
         raise HTTPException(status_code=404, detail="No user directories found in Bitbucket")
     directory_id = directories[0]["id"]
-    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-dirs/{directory_id}/sync"
+    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-directories/{directory_id}/sync"
     try:
         response = await bitbucket_client.post(endpoint)
         _handle_response(response)
