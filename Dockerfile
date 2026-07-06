@@ -1,6 +1,7 @@
-FROM harbor.app.com/devops-infra/generic-python39:1.0.0
+FROM python:3.9-slim
 
-RUN microdnf -y install git
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --upgrade pip && pip install -r requirements.txt
