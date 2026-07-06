@@ -1,4 +1,4 @@
-# Example-FastAPI-template
+# devops-api
 
 ## Project Structure
 ```

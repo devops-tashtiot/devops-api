@@ -40,7 +40,7 @@ steps:
 #     sonar_host: https://tashtiot.sonarqube.app.com
 #     sonar_token:
 #       from_secret: sonar_token
-#     sonar_project: TAPI:example-api
+#     sonar_project: TAPI:devops-api
 
 
 # ========================================== BUILD & PUSH ==============================================================
@@ -51,7 +51,7 @@ steps:
     username: svc_dev_admin
     password:
       from_secret: artifactory_token
-    repo: docker-dev-local/example-api
+    repo: docker-dev-local/devops-api
     tags: ${CI_COMMIT_TAG}
   # depends_on: [SonarQube, Test V1, Test V2]
   when:
