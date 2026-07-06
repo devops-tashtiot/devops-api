@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.2] - 2026-07-06
+
+### Bug Fixes
+
+- *(api)* Hardcode https for argocd/sonarqube client URLs ([e8c74ad](https://github.com/devops-tashtiot/devops-api/commit/e8c74adeed9cd68dbe25ab061592986fc40da6b7))
+
 ## [0.2.1] - 2026-07-06
 
 ### Bug Fixes
