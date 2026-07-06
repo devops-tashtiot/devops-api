@@ -1,5 +1,6 @@
 from pydantic import BaseModel, Field
 from enum import Enum
+from tashtiot_apis_library import OperationRequest
 
 class STATUSES(Enum):
     SENT   = "sent"
@@ -24,3 +25,7 @@ class MessageStatus(BaseModel):
         ...,
         description="message status",
     )
+
+
+class ChatMessageRequest(OperationRequest):
+    spec: ChatMessage
