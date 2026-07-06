@@ -69,3 +69,17 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
             ${{ env.IMAGE_NAME }}:latest
+
+      - name: Bump image tag in devtools-definition
+        env:
+          GITOPS_TOKEN: ${{ secrets.GITOPS_PAT }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          git clone "https://x-access-token:${GITOPS_TOKEN}@github.com/devops-tashtiot/devtools-definition.git" /tmp/devtools-definition
+          cd /tmp/devtools-definition
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          sed -i "s/^\(\s*tag: \).*/\1\"${VERSION}\"/" devtools/devops-api/values.yaml
+          git add devtools/devops-api/values.yaml
+          git commit -m "chore(devops-api): bump image tag to ${VERSION}" || echo "no changes"
+          git push origin HEAD:main
