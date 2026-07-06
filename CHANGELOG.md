@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.3] - 2026-07-06
+
+### Bug Fixes
+
+- *(bitbucket,jira)* Correct user-directories endpoint path (was 404ing on user-dirs) ([3cc78ca](https://github.com/devops-tashtiot/devops-api/commit/3cc78ca48b8c8e1032400413d31e6800cbd57c86))
+
 ## [0.2.2] - 2026-07-06
 
 ### Bug Fixes
