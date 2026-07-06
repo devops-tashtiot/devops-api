@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - *(api)* Remove invalid ssh_port kwarg from Git() instantiation ([748e2ff](https://github.com/devops-tashtiot/devops-api/commit/748e2ffcc657074629abf3f3c0b73b5e9dcd6418))
 
+### Miscellaneous Tasks
+
+- Retrigger pipeline after transient tag-push race ([77b0967](https://github.com/devops-tashtiot/devops-api/commit/77b0967710c259a51319b9a77c3f0dcb2e2df2d3))
+
 ## [0.2.0] - 2026-07-06
 
 ### Features
