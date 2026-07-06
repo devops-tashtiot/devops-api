@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.1] - 2026-07-06
+
+### Bug Fixes
+
+- *(api)* Remove invalid ssh_port kwarg from Git() instantiation ([748e2ff](https://github.com/devops-tashtiot/devops-api/commit/748e2ffcc657074629abf3f3c0b73b5e9dcd6418))
+
 ## [0.2.0] - 2026-07-06
 
 ### Features
