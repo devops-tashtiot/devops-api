@@ -20,6 +20,9 @@ body = """
 trim = true
 footer = ""
 
+[bump]
+initial_tag = "v0.1.0"
+
 [git]
 conventional_commits = true
 filter_unconventional = true
