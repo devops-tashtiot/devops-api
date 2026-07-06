@@ -48,7 +48,6 @@ def create_app() -> FastAPI:
             repo_slug=global_config.SONARQUBE_AAS_REPO_SLUG,
             default_ref=sonarqube_config.SONARQUBE_GITOPS_DEFAULT_BRANCH,
             ssh_key_file_path=global_config.GIT_SSH_KEY_PATH,
-            ssh_port=global_config.GIT_SSH_KEY_PATH
         )
         app.include_router(get_v1_sonarqube_router(sonarqube_git))
 
@@ -68,7 +67,6 @@ def create_app() -> FastAPI:
             repo_slug=global_config.ARGOCD_AAS_REPO_SLUG,
             default_ref=argocd_config.ARGOCD_GITOPS_DEFAULT_BRANCH,
             ssh_key_file_path=global_config.GIT_SSH_KEY_PATH,
-            ssh_port=global_config.GIT_SSH_KEY_PATH
         )
         app.include_router(get_v1_argocd_router(
             git,
