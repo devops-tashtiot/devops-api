@@ -11,9 +11,14 @@ class DevopsStaticSettings(BaseSettings):
         default=True,
     )
     
-    ARTIFACTORY_API_TOKEN: str = Field(
-        description="ARTIFACTORY API token",
-        default="sheker_token",
+    ARTIFACTORY_PASSWORD: str = Field(
+        description="ARTIFACTORY username's password",
+        default="sheker",
+    )
+
+    ARTIFACTORY_USERNAME: str = Field(
+        description="ARTIFACTORY username",
+        default="svc-lcl-artifactory-api",
     )
 
     ARTIFACTORY_LDAP_SETTING_NAME: str = Field(

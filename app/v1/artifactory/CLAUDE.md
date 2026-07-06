@@ -2,10 +2,10 @@
 
 ## How the client is built
 
-`main.py` constructs a single `BaseAPI` client with a Bearer token header from `global_config`:
+`main.py` constructs a single `BaseAPI` client with basic auth from `global_config` (same pattern as Bitbucket/Confluence/Jira/SonarQube):
 
 ```
-BaseAPI(global_config.ARTIFACTORY_API_URL, headers={"Authorization": f"Bearer {global_config.ARTIFACTORY_API_TOKEN}"}).client
+BaseAPI(global_config.ARTIFACTORY_API_URL, auth=(global_config.ARTIFACTORY_USERNAME, global_config.ARTIFACTORY_PASSWORD)).client
 ```
 
 Passed into `get_v1_artifactory_router(artifactory_client)` at startup — no per-request reconstruction.
@@ -167,13 +167,13 @@ The archive must be pre-uploaded to the `platform-devops-team/xray-vulnerability
 | `ARTIFACTORY_ENDPOINT` | `/access/api/v1` | Artifactory Access REST API base path |
 | `ARTIFACTORY_XRAY_ENDPOINT` | `/xray/api/v1` | Xray REST API base path |
 
-Global token (`ARTIFACTORY_API_TOKEN`), URL (`ARTIFACTORY_API_URL`), LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`), and `ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL` live in `global_conf.py`.
+Global credentials (`ARTIFACTORY_USERNAME`, `ARTIFACTORY_PASSWORD`), URL (`ARTIFACTORY_API_URL`), LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`), and `ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL` live in `global_conf.py`.
 
 ## Local dev
 
 ```bash
 docker compose -f ../docker-compose.artifactory.yaml up -d
-# Set ARTIFACTORY_API_URL and ARTIFACTORY_API_TOKEN in .env
+# Set ARTIFACTORY_API_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD in .env
 ```
 
 ## Testing

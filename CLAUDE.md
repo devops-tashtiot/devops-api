@@ -397,8 +397,8 @@ ENABLE_<SERVICE>_API: bool = Field(
 )
 ```
 
-Use `auth=` (basic auth) for services like Bitbucket/Confluence.
-Use `headers={"Authorization": f"Bearer {token}"}` for token-based services like Artifactory.
+Use `auth=` (basic auth) for services like Bitbucket/Confluence/Jira/SonarQube/Artifactory.
+Use `headers={"Authorization": f"Bearer {token}"}` only for genuinely token-based services (e.g. ArgoCD/Git connectors via the internal library).
 
 ---
 
@@ -423,7 +423,7 @@ if global_config.ENABLE_<SERVICE>_API:
 
 | Module        | Auth type  | Endpoint base            | Resource  | Operations                              |
 |---------------|------------|--------------------------|-----------|------------------------------------------|
-| `artifactory` | Bearer token | `/access/api/v1`       | project   | increase storage quota                   |
+| `artifactory` | Basic auth | `/access/api/v1`       | project   | increase storage quota                   |
 | `bitbucket`   | Basic auth | `/rest/api/latest`       | project   | create, delete, assign admin; list/sync user dirs |
 | `confluence`  | Basic auth | `/rest/api/latest`       | space     | create, delete, assign user/group admin; plugin install/uninstall; space import; list/sync user dirs |
 | `jira`        | Basic auth | `/rest/api/latest`       | project   | create (`POST /`), delete (`DELETE /{key}`), assign admin; list/sync user dirs |
