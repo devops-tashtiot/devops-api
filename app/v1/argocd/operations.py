@@ -48,8 +48,7 @@ async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
 
 
 async def _build_argocd(app_name: str, timeout: int, username: str, password: str) -> ArgoCD:
-    port = f":{config.ARGOCD_PORT}" if config.ARGOCD_PORT else ""
-    base_url = f"{config.ARGOCD_SCHEME}://{app_name}.argocd.{global_config.DOMAIN_SUFFIX}{port}"
+    base_url = f"https://{app_name}.argocd.{global_config.DOMAIN_SUFFIX}"
     return await ArgoCD.from_credentials(base_url, timeout, username, password)
 
 

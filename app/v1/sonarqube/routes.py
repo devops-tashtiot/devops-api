@@ -15,8 +15,7 @@ from .schemas import GroupSpec, SonarQubeConsumerSpec, SonarQubeConsumerUpdateSp
 
 
 def _build_client(consumer_name: str) -> BaseAPI:
-    port = f":{config.SONARQUBE_PORT}" if config.SONARQUBE_PORT else ""
-    url = f"{config.SONARQUBE_SCHEME}://{consumer_name}.sonarqube.{global_config.DOMAIN_SUFFIX}{port}"
+    url = f"https://{consumer_name}.sonarqube.{global_config.DOMAIN_SUFFIX}"
     return BaseAPI(url, auth=(global_config.SONARQUBE_USERNAME, global_config.SONARQUBE_PASSWORD)).client
 
 

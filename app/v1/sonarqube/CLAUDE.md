@@ -5,7 +5,7 @@
 Unlike other modules that share a single pre-built httpx client, `routes.py:_build_client()` constructs a fresh client **per request** from the `consumer_name` field in the payload:
 
 ```
-{SONARQUBE_SCHEME}://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}[:{SONARQUBE_PORT}]
+https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}
 ```
 
 Auth always uses the global credentials from `.env` (`SONARQUBE_USERNAME` / `SONARQUBE_PASSWORD`).  

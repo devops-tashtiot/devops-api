@@ -13,7 +13,7 @@ Manages SonarQube groups with full administrator permissions (global scope + Def
 Each consumer has its own SonarQube instance, addressed as:
 
 ```
-{SONARQUBE_SCHEME}://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}[:{SONARQUBE_PORT}]
+https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}
 ```
 
 Credentials are taken from `SONARQUBE_USERNAME` / `SONARQUBE_PASSWORD` in `.env`.
