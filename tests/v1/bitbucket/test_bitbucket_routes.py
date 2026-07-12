@@ -180,58 +180,13 @@ def test_list_user_dirs_returns_200(mock_bitbucket_client):
     assert response.json() == BITBUCKET_DIRECTORIES_RESPONSE["directory"]
 
 
-def test_sync_user_dir_returns_200(mock_bitbucket_client):
-    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value=BITBUCKET_DIRECTORIES_RESPONSE)
-    ))
-    mock_bitbucket_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
-    app = FastAPI()
-    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 200
-    assert response.json()["status"] == "successful"
-    sync_endpoint = mock_bitbucket_client.post.call_args.args[0]
-    assert sync_endpoint.endswith("/directory/13139969/synchronise")
-
-
-def test_sync_user_dir_error_returns_error_response(mock_bitbucket_client):
-    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value=BITBUCKET_DIRECTORIES_RESPONSE)
-    ))
-    mock_bitbucket_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
-    app = FastAPI()
-    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 404
+def test_sync_user_dir_returns_501_not_supported(client, mock_bitbucket_client):
+    # Bitbucket has no supported way to trigger a directory sync on demand — confirmed live
+    # (see app/v1/bitbucket/CLAUDE.md): the only "working" internal UI action is unreliable,
+    # silently no-ops on repeat calls, and would report false successes. The endpoint must
+    # always return 501 without even attempting a call — it never needs to reach the client.
+    response = client.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 501
     assert response.json()["status"] == "Failed"
-
-
-def test_sync_user_dir_no_directories_returns_404(mock_bitbucket_client):
-    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value={"directory": []})
-    ))
-    app = FastAPI()
-    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 404
-    assert response.json()["status"] == "Failed"
-
-
-def test_sync_user_dir_only_internal_directory_returns_404(mock_bitbucket_client):
-    # Only a non-syncable internal directory exists (no connector/LDAP directory configured) —
-    # must not blindly try to sync it (that 404s against Bitbucket itself).
-    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value={"directory": [
-            {"name": "Bitbucket Internal Directory", "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/32769", "rel": "self"}]},
-        ]})
-    ))
-    app = FastAPI()
-    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 404
-    assert response.json()["status"] == "Failed"
+    mock_bitbucket_client.get.assert_not_called()
     mock_bitbucket_client.post.assert_not_called()

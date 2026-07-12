@@ -104,13 +104,13 @@ def test_create_assign_and_delete_project(bb, api):
 
 
 @pytest.mark.integration
-def test_list_and_sync_user_directories(bb, api):
+def test_list_user_directories(bb, api):
     # --- list via our API ---
     r = api.get(f"{PREFIX}/user-dirs")
     assert r.status_code == 200, r.text
     directories = r.json()
     assert isinstance(directories, list)
-    assert len(directories) > 0, "Bitbucket has no configured user directories to sync"
+    assert len(directories) > 0, "Bitbucket has no configured user directories"
 
     # --- cross-check against Bitbucket directly (same Crowd-embedded resource) ---
     direct = bb.get("/rest/crowd/latest/directory", headers={"Accept": "application/json"})
@@ -119,7 +119,12 @@ def test_list_and_sync_user_directories(bb, api):
     api_names = {d["name"] for d in directories}
     assert api_names == direct_names
 
-    # --- sync the first directory via our API ---
+
+@pytest.mark.integration
+def test_sync_user_directory_returns_not_supported(api):
+    # Bitbucket Data Center has no supported REST API to trigger a directory sync on demand —
+    # confirmed by live investigation (see app/v1/bitbucket/CLAUDE.md). This must return 501,
+    # not attempt any call to Bitbucket that could report a false success.
     r = api.post(f"{PREFIX}/user-dirs/sync")
-    assert r.status_code == 200, r.text
-    assert r.json()["status"] == "successful"
+    assert r.status_code == 501, r.text
+    assert r.json()["status"] == "Failed"
