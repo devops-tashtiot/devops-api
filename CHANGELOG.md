@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.4] - 2026-07-12
+
+### Bug Fixes
+
+- *(jira)* Use Crowd directory API for user-dirs, not admin/user-directories ([3d4c662](https://github.com/devops-tashtiot/devops-api/commit/3d4c662160a7ab6824a9a1e7dce211e879063229))
+
 ## [0.2.3] - 2026-07-06
 
 ### Bug Fixes
