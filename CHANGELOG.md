@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.5] - 2026-07-12
+
+### Bug Fixes
+
+- *(bitbucket)* Use Crowd directory API for sync, doc real CI pipeline ([5d67b73](https://github.com/devops-tashtiot/devops-api/commit/5d67b739b8a683fef5bbe54f3fc62ec4d4c00014))
+
 ## [0.2.4] - 2026-07-12
 
 ### Bug Fixes
