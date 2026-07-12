@@ -80,6 +80,28 @@ def test_install_plugin_polls_until_done(client, mock_s3_http, mock_confluence_c
     assert mock_confluence_client.get.call_count == 2
 
 
+def test_install_plugin_poll_follows_redirects(client, mock_s3_http, mock_confluence_client):
+    # Confirmed live: shortly after the task completes, its "pending" URL 303-redirects to
+    # the permanent "tasks" URL — the poll GET must pass follow_redirects=True or a healthy,
+    # completed install gets misreported as a failure on that empty-bodied 303 itself.
+    in_progress = MagicMock(status_code=202, text=(
+        '<textarea>{"status":{"done":false,"contentType":""},'
+        '"links":{"self":"/rest/plugins/1.0/pending/task-1"}}</textarea>'
+    ))
+    done = MagicMock(status_code=200, text=(
+        '{"status":{"done":true,"contentType":"application/vnd.atl.plugins.plugin+json"},'
+        '"links":{"self":"/rest/plugins/1.0/pending/task-1"}}'
+    ))
+    token_response = MagicMock(status_code=200, headers={"upm-token": FAKE_UPM_TOKEN})
+    mock_confluence_client.get = AsyncMock(side_effect=[token_response, done])
+    mock_confluence_client.post = AsyncMock(return_value=in_progress)
+
+    response = client.post(f"{PREFIX}/plugin/", json=VALID_PAYLOAD)
+    assert response.status_code == 200
+    poll_call = mock_confluence_client.get.call_args_list[1]
+    assert poll_call.kwargs.get("follow_redirects") is True
+
+
 def test_install_plugin_task_error_returns_422(client, mock_s3_http, mock_confluence_client):
     failed = MagicMock(status_code=202, text=(
         '<textarea>{"status":{"done":true,'

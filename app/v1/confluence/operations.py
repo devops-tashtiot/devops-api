@@ -160,7 +160,12 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
             return
         await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
         try:
-            response = await confluence_client.get(task_url)
+            # Confirmed live: shortly after the task completes, GETting its "pending" URL
+            # 303-redirects to the permanent "tasks" URL (task["links"]["alternate"]) instead
+            # of continuing to serve it directly — immediately after install it doesn't
+            # redirect, so this is a real state transition, not a fluke. Must follow it or
+            # _handle_response treats the empty-bodied 303 itself as a failure.
+            response = await confluence_client.get(task_url, follow_redirects=True)
             _handle_response(response)
             task = _parse_upm_task_response(response)
         except HTTPException:
