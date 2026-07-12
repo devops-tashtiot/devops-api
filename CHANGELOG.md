@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.2.6] - 2026-07-12
+
+### Bug Fixes
+
+- *(bitbucket)* Sync must pick the syncable directory, not directories[0] ([f74a0cc](https://github.com/devops-tashtiot/devops-api/commit/f74a0ccb3e51b654071136e4338a7898d9d4c36f))
+
 ## [0.2.5] - 2026-07-12
 
 ### Bug Fixes
