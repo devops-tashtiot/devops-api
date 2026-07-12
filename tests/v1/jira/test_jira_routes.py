@@ -114,32 +114,61 @@ def test_delete_project_not_found_returns_404(mock_jira_client):
 
 # --- user-dirs ---
 
+JIRA_DIRECTORIES_RESPONSE = {
+    "directories": [
+        {"name": "Jira Internal Directory", "links": [{"href": "http://jira/rest/crowd/latest/directory/1", "rel": "self"}]},
+        {"name": "LDAP server", "links": [{"href": "http://jira/rest/crowd/latest/directory/10000", "rel": "self"}]},
+    ]
+}
+
+
 def test_list_user_dirs_returns_200(mock_jira_client):
     mock_jira_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value=[{"name": "Internal"}])
+        status_code=200, text="", json=MagicMock(return_value=JIRA_DIRECTORIES_RESPONSE)
     ))
     app = FastAPI()
     app.include_router(get_v1_jira_router(mock_jira_client))
     c = TestClient(app)
     response = c.get(f"{PREFIX}/user-dirs")
     assert response.status_code == 200
+    assert response.json() == JIRA_DIRECTORIES_RESPONSE["directories"]
 
 
 def test_sync_user_dir_returns_200(mock_jira_client):
+    mock_jira_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value=JIRA_DIRECTORIES_RESPONSE)
+    ))
     mock_jira_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
     app = FastAPI()
     app.include_router(get_v1_jira_router(mock_jira_client))
     c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/12345/sync")
+    response = c.post(f"{PREFIX}/user-dirs/sync")
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
+    sync_endpoint = mock_jira_client.post.call_args.args[0]
+    assert sync_endpoint.endswith("/directory/1/synchronise")
 
 
 def test_sync_user_dir_error_returns_error_response(mock_jira_client):
+    mock_jira_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value=JIRA_DIRECTORIES_RESPONSE)
+    ))
     mock_jira_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
     app = FastAPI()
     app.include_router(get_v1_jira_router(mock_jira_client))
     c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/99999/sync")
+    response = c.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"
+
+
+def test_sync_user_dir_no_directories_returns_404(mock_jira_client):
+    mock_jira_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value={"directories": []})
+    ))
+    app = FastAPI()
+    app.include_router(get_v1_jira_router(mock_jira_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/user-dirs/sync")
     assert response.status_code == 404
     assert response.json()["status"] == "Failed"

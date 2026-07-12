@@ -65,11 +65,11 @@ async def assign_project_admin_group(jira_client: Any, payload: ProjectSpec) -> 
 
 
 async def list_user_directories(jira_client: Any) -> list[dict]:
-    endpoint = f"{config.JIRA_ENDPOINT}/admin/user-directories"
+    endpoint = f"{config.JIRA_CROWD_ENDPOINT}/directory"
     try:
-        response = await jira_client.get(endpoint)
+        response = await jira_client.get(endpoint, headers={"Accept": "application/json"})
         _handle_response(response)
-        return response.json()
+        return response.json()["directories"]
     except Exception as e:
         logger.error(f"Unexpected error listing user directories: {str(e)}")
         raise
@@ -79,10 +79,10 @@ async def sync_user_directory(jira_client: Any) -> None:
     directories = await list_user_directories(jira_client)
     if not directories:
         raise HTTPException(status_code=404, detail="No user directories found in Jira")
-    directory_id = directories[0]["id"]
-    endpoint = f"{config.JIRA_ENDPOINT}/admin/user-directories/{directory_id}/sync"
+    directory_id = directories[0]["links"][0]["href"].rstrip("/").rsplit("/", 1)[-1]
+    endpoint = f"{config.JIRA_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
     try:
-        response = await jira_client.post(endpoint)
+        response = await jira_client.post(endpoint, headers={"Accept": "application/json"})
         _handle_response(response)
     except Exception as e:
         logger.error(f"Unexpected error syncing user directory {directory_id}: {str(e)}")

@@ -19,7 +19,7 @@ Passed into `get_v1_jira_router(jira_client)` at startup — no per-request reco
 | `GET` | `/user-dirs` | List user directories |
 | `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
-> Route paths above are devops-api's own; the upstream Jira endpoints they call are `/rest/api/latest/admin/user-directories` (see below).
+> Route paths above are devops-api's own; the upstream Jira endpoints they call are `/rest/crowd/latest/directory` (see below).
 
 ## Project create flow (POST /)
 
@@ -68,21 +68,45 @@ Body: {"group": [admin_group]}
 → 200
 ```
 
-### List user directories — `GET /rest/api/latest/admin/user-directories`
+### List user directories — `GET /rest/crowd/latest/directory`
 
 ```
-GET /rest/api/latest/admin/user-directories
-→ 200, JSON array of directory objects
+GET /rest/crowd/latest/directory
+Header: Accept: application/json   (required — without it Jira defaults to XML and 500s:
+  no XML message-body-writer is registered for this endpoint's response type)
+→ 200, {"directories": [{"name": ..., "links": [{"href": "https://.../directory/{id}", "rel": "self"}], "sync"?: {...}}, ...]}
 ```
 
-Note: the path is `user-directories` (plural), not `user-dirs` — the latter 404s. Confirmed against a live Bitbucket Server 8.19.5 instance, which shares the same underlying Atlassian admin REST API convention; there's no local Jira compose file to independently verify against (see "Local dev" below), so this is a same-convention fix, not a Jira-specific confirmation.
+Confirmed live against Jira 9.12.8 (Data Center). This is the same Atlassian Crowd-embedded
+REST resource Confluence uses (`app/v1/confluence/CLAUDE.md` — identical Java class in the
+server logs: `com.atlassian.crowd.embedded.admin.rest.entities.DirectoryList`), but the two
+products don't return identical shapes: Jira's top-level key is `directories` (plural) and
+`links` (plural); Confluence's is `directory` (singular) and `link` (singular). Neither
+response includes an `id` field on each directory object — the numeric ID only exists
+embedded in `links[0].href` (e.g. `.../directory/10000` → `10000`), which is what
+`sync_user_directory` parses out. `GET /rest/api/latest/admin/user-directories` — the
+previous guess, copied from Bitbucket's convention — 404s on Jira; Bitbucket's admin REST
+API and this Crowd-embedded API are two different things, not the same convention across
+products as originally assumed.
 
-### Sync user directory — `POST /rest/api/latest/admin/user-directories/{id}/sync`
+Requires Jira **System Administrator** (not just regular Administrator) on the calling
+account — `ADMINISTER: true` alone gets a 403 "Client must be authenticated as a system
+administrator"; the account needs `SYSTEM_ADMIN: true` (`GET /rest/api/2/mypermissions`),
+normally granted via the `jira-system-administrators` group.
+
+### Sync user directory — `POST /rest/crowd/latest/directory/{id}/synchronise`
 
 ```
-POST /rest/api/latest/admin/user-directories/{id}/sync
-→ 200/204 (unverified)
+POST /rest/crowd/latest/directory/{id}/synchronise
+Header: Accept: application/json
+→ id is parsed from the first listed directory's links[0].href, not a response "id" field
+   (see above — no such field exists)
 ```
+
+Note: British spelling (`synchronise`, not `sync`) — inferred from the shared Crowd-embedded
+REST resource with Confluence (same convention there), not independently confirmed by firing
+this specific POST against live Jira (a state-changing call, not exercised during
+verification — only the `GET` was).
 
 ## Schema — `ProjectSpec`
 
@@ -101,6 +125,7 @@ Model validator: at least one of `admin_user` / `admin_group` must be provided.
 | Field | Default | Description |
 |---|---|---|
 | `JIRA_ENDPOINT` | `/rest/api/latest` | Jira REST API base path |
+| `JIRA_CROWD_ENDPOINT` | `/rest/crowd/latest` | Crowd REST API base path — used for user directory listing and sync |
 
 Global credentials (`JIRA_USERNAME`, `JIRA_PASSWORD`) and `JIRA_API_URL` live in `global_conf.py`.
 

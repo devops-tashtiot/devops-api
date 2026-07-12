@@ -19,5 +19,10 @@ class JiraConfig(BaseSettings):
         description="API endpoint for Jira",
     )
 
+    JIRA_CROWD_ENDPOINT: str = Field(
+        default="/rest/crowd/latest",
+        description="Crowd REST API base path — used for user directory listing and sync",
+    )
+
 
 config = JiraConfig()
