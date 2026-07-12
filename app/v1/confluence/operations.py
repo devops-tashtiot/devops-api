@@ -1,4 +1,6 @@
 import asyncio
+import json
+import re
 from typing import Any
 
 import httpx
@@ -117,7 +119,22 @@ async def get_upm_token(confluence_client: Any) -> str:
         raise HTTPException(status_code=502, detail=f"UPM token fetch failed: {e}")
 
 
+def _parse_upm_task_response(response) -> dict:
+    # UPM's file-upload response wraps its JSON in a literal <textarea>...</textarea> — a
+    # long-standing browser-compat quirk (avoids the browser offering a file-download dialog
+    # for a JSON response to a multipart POST). Confirmed live. Its own polling GET endpoint
+    # for the same task returns plain JSON with no such wrapper — handle both.
+    text = response.text.strip()
+    match = re.match(r"^<textarea>(.*)</textarea>$", text, re.DOTALL)
+    return json.loads(match.group(1) if match else text)
+
+
 async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_name: str, upm_token: str) -> None:
+    # UPM install is asynchronous — confirmed live: the initial POST returns 202 with
+    # "done": false and a polling link, not a completed result. Firing the POST and reporting
+    # success immediately (the old behavior) is a lie: a caller that then checks whether the
+    # plugin exists can hit a 404 because installation genuinely hasn't finished registering
+    # the OSGi bundle yet, even though devops-api already said "successful".
     endpoint = f"{config.CONFLUENCE_UPM_ENDPOINT}/?token={upm_token}"
     try:
         response = await confluence_client.post(
@@ -125,12 +142,37 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
             files={"plugin": (plugin_name, plugin_bytes, "application/octet-stream")},
         )
         _handle_response(response)
-        logger.info(f"Installed plugin {plugin_name} via UPM")
+        task = _parse_upm_task_response(response)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to install plugin {plugin_name}: {e}")
         raise HTTPException(status_code=502, detail=f"Plugin install failed: {e}")
+
+    task_url = task["links"]["self"]
+    for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
+        status = task["status"]
+        if status["done"]:
+            if "err" in status.get("contentType", ""):
+                error_msg = status.get("errorMessage", "Unknown UPM install error")
+                raise HTTPException(status_code=422, detail=f"Plugin install failed: {error_msg}")
+            logger.info(f"Installed plugin {plugin_name} via UPM after {attempt} poll(s)")
+            return
+        await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
+        try:
+            response = await confluence_client.get(task_url)
+            _handle_response(response)
+            task = _parse_upm_task_response(response)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error polling plugin install task for {plugin_name}: {e}")
+            raise HTTPException(status_code=502, detail=f"Error polling plugin install: {e}")
+    raise HTTPException(
+        status_code=504,
+        detail=f"Plugin install for {plugin_name} did not finish within "
+        f"{config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
+    )
 
 
 async def list_user_directories(confluence_client: Any) -> list[dict]:

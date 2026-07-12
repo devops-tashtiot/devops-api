@@ -55,6 +55,69 @@ def test_install_plugin_sends_correct_filename(client, mock_s3_http, mock_conflu
     assert content_type == "application/octet-stream"
 
 
+# --- install polling: UPM install is async, confirmed live (see app/v1/confluence/CLAUDE.md
+# and operations.py:install_plugin) — the initial POST can return "done": false with a link
+# to poll, and the poll can itself report a genuine failure ("done": true but an error
+# contentType/errorMessage) instead of ever succeeding. ---
+
+def test_install_plugin_polls_until_done(client, mock_s3_http, mock_confluence_client):
+    in_progress = MagicMock(status_code=202, text=(
+        '<textarea>{"status":{"done":false,"contentType":""},'
+        '"links":{"self":"/rest/plugins/1.0/pending/task-1"}}</textarea>'
+    ))
+    done = MagicMock(status_code=200, text=(
+        '{"status":{"done":true,"contentType":"application/vnd.atl.plugins.plugin+json"},'
+        '"links":{"self":"/rest/plugins/1.0/pending/task-1"}}'
+    ))
+    token_response = MagicMock(status_code=200, headers={"upm-token": FAKE_UPM_TOKEN})
+    # First .get() is the upm-token fetch, second is the poll of the pending task.
+    mock_confluence_client.get = AsyncMock(side_effect=[token_response, done])
+    mock_confluence_client.post = AsyncMock(return_value=in_progress)
+
+    response = client.post(f"{PREFIX}/plugin/", json=VALID_PAYLOAD)
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+    assert mock_confluence_client.get.call_count == 2
+
+
+def test_install_plugin_task_error_returns_422(client, mock_s3_http, mock_confluence_client):
+    failed = MagicMock(status_code=202, text=(
+        '<textarea>{"status":{"done":true,'
+        '"contentType":"application/vnd.atl.plugins.task.install.err+json",'
+        '"errorMessage":"Could not install the file. Check that the file is valid."},'
+        '"links":{"self":"/rest/plugins/1.0/pending/task-2"}}</textarea>'
+    ))
+    mock_confluence_client.post = AsyncMock(return_value=failed)
+
+    response = client.post(f"{PREFIX}/plugin/", json=VALID_PAYLOAD)
+    assert response.status_code == 422
+    assert response.json()["status"] == "Failed"
+    assert "Could not install the file" in response.json()["stdout"]
+
+
+def test_install_plugin_never_done_returns_504(mock_s3_http, monkeypatch):
+    from app.v1.confluence import operations as confluence_ops
+
+    monkeypatch.setattr(confluence_ops.config, "CONFLUENCE_JOB_MAX_POLLS", 2)
+    monkeypatch.setattr(confluence_ops.config, "CONFLUENCE_JOB_POLL_INTERVAL", 0)
+
+    never_done = MagicMock(status_code=202, text=(
+        '<textarea>{"status":{"done":false,"contentType":""},'
+        '"links":{"self":"/rest/plugins/1.0/pending/task-3"}}</textarea>'
+    ))
+    token_response = MagicMock(status_code=200, headers={"upm-token": FAKE_UPM_TOKEN})
+    mock_confluence_client = MagicMock()
+    mock_confluence_client.get = AsyncMock(side_effect=[token_response, never_done, never_done])
+    mock_confluence_client.post = AsyncMock(return_value=never_done)
+
+    app = FastAPI()
+    app.include_router(get_v1_confluence_router(mock_confluence_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/plugin/", json=VALID_PAYLOAD)
+    assert response.status_code == 504
+    assert response.json()["status"] == "Failed"
+
+
 def test_install_plugin_s3_404_returns_404(mock_confluence_client):
     s3_response = MagicMock()
     s3_response.status_code = 404

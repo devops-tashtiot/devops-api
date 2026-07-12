@@ -34,9 +34,15 @@ def mock_confluence_client():
     token_response.headers = {"upm-token": FAKE_UPM_TOKEN}
 
     install_response = MagicMock()
-    install_response.status_code = 200
-    install_response.text = ""
-    install_response.json.return_value = {}
+    install_response.status_code = 202
+    # UPM's real install response — "done": true here means install_plugin's poll loop
+    # returns on the very first check, without needing a second GET call (which would
+    # otherwise collide with the get_upm_token mock also using .get()).
+    install_response.text = (
+        '<textarea>{"type":"INSTALL","status":{"done":true,"statusCode":200,'
+        '"contentType":"application/vnd.atl.plugins.plugin+json"},'
+        '"links":{"self":"/rest/plugins/1.0/pending/fake-task-id"}}</textarea>'
+    )
 
     delete_response = MagicMock()
     delete_response.status_code = 200
