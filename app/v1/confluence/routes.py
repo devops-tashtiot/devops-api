@@ -3,7 +3,7 @@ import base64
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceImportUploadSpec, SpaceSpec, ConfluenceSpaceRequest, ConfluencePluginInstallRequest, ConfluencePluginUploadRequest, ConfluenceSpaceExportRequest, ConfluenceSpaceImportRequest, ConfluenceSpaceImportUploadRequest
+from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec, ConfluenceSpaceRequest, ConfluencePluginInstallRequest, ConfluencePluginUploadRequest, ConfluenceSpaceExportRequest, ConfluenceSpaceImportRequest
 from typing import Any
 from .conf import config
 from .operations import (
@@ -95,23 +95,6 @@ def get_v1_confluence_router(confluence_client: Any):
             return JSONResponse(
                 ExceptionResponse(
                     stdout=f"Exception uploading plugin. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
-            )
-
-    @router.post("/space-import/upload", name="upload confluence space archive to MinIO", status_code=200)
-    async def upload_confluence_space_archive(payload: ConfluenceSpaceImportUploadRequest) -> JSONResponse:
-        try:
-            data_url = payload.spec.file_content
-            raw = data_url.split(",", 1)[1] if "," in data_url else data_url
-            await upload_archive_to_s3(base64.b64decode(raw), payload.spec.archive_name)
-            return JSONResponse({"status": "successful", "archive_name": payload.spec.archive_name})
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception uploading space archive. {external_error.detail}",
                     status="Failed",
                     status_code=external_error.status_code,
                 ).dict(),

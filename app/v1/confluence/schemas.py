@@ -113,26 +113,6 @@ class PluginUploadSpec(BaseModel):
         return v
 
 
-class SpaceImportUploadSpec(BaseModel):
-    archive_name: str = Field(
-        ...,
-        description="Filename to store in S3 (must end with .zip)",
-        min_length=5,
-        max_length=255,
-    )
-    file_content: str = Field(
-        ...,
-        description="Base64-encoded .zip archive (data-URL format accepted)",
-        min_length=1,
-    )
-
-    @model_validator(mode="after")
-    def archive_must_be_zip(self) -> "SpaceImportUploadSpec":
-        if not self.archive_name.lower().endswith(".zip"):
-            raise ValueError("archive_name must end with .zip")
-        return self
-
-
 class ConfluenceSpaceRequest(OperationRequest):
     spec: SpaceSpec
 
@@ -151,7 +131,3 @@ class ConfluenceSpaceExportRequest(OperationRequest):
 
 class ConfluenceSpaceImportRequest(OperationRequest):
     spec: SpaceImportSpec
-
-
-class ConfluenceSpaceImportUploadRequest(OperationRequest):
-    spec: SpaceImportUploadSpec
