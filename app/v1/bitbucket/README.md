@@ -33,16 +33,12 @@ Rolls back (deletes the project) automatically if any permission step fails.
 
 Returns all user directories configured in Bitbucket (including AD/LDAP directories).
 
-**Response** — JSON array from Bitbucket's `/rest/api/1.0/admin/user-directories`.
+**Response** — JSON array (unwrapped from Bitbucket's `{"directory": [...]}`) from
+`/rest/crowd/latest/directory`.
 
 ---
 
-### `POST /user-dirs/{directory_id}/sync`
+### `POST /user-dirs/sync`
 
-Triggers an Active Directory synchronisation for the specified user directory.
-
-**Path parameter**
-
-| Param | Type | Description |
-|---|---|---|
-| `directory_id` | integer | ID of the user directory to sync (use `GET /user-dirs` to find IDs) |
+Triggers a synchronisation of the first user directory returned by `GET /user-dirs` (ID is
+auto-discovered, not supplied by the caller).

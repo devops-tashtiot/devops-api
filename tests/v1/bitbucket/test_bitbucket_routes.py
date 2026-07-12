@@ -150,3 +150,65 @@ def test_delete_project_conflict_returns_error(mock_bitbucket_client):
     response = c.delete(f"{PREFIX}/HASREPOS")
     assert response.status_code == 409
     assert response.json()["status"] == "Failed"
+
+
+# --- user-dirs ---
+
+BITBUCKET_DIRECTORIES_RESPONSE = {
+    "directory": [
+        {"name": "Bitbucket Internal Directory", "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/32769", "rel": "self"}]},
+        {"name": "Active Directory server", "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/13139969", "rel": "self"}]},
+    ]
+}
+
+
+def test_list_user_dirs_returns_200(mock_bitbucket_client):
+    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value=BITBUCKET_DIRECTORIES_RESPONSE)
+    ))
+    app = FastAPI()
+    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
+    c = TestClient(app)
+    response = c.get(f"{PREFIX}/user-dirs")
+    assert response.status_code == 200
+    assert response.json() == BITBUCKET_DIRECTORIES_RESPONSE["directory"]
+
+
+def test_sync_user_dir_returns_200(mock_bitbucket_client):
+    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value=BITBUCKET_DIRECTORIES_RESPONSE)
+    ))
+    mock_bitbucket_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+    app = FastAPI()
+    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+    sync_endpoint = mock_bitbucket_client.post.call_args.args[0]
+    assert sync_endpoint.endswith("/directory/32769/synchronise")
+
+
+def test_sync_user_dir_error_returns_error_response(mock_bitbucket_client):
+    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value=BITBUCKET_DIRECTORIES_RESPONSE)
+    ))
+    mock_bitbucket_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
+    app = FastAPI()
+    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"
+
+
+def test_sync_user_dir_no_directories_returns_404(mock_bitbucket_client):
+    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value={"directory": []})
+    ))
+    app = FastAPI()
+    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"

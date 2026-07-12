@@ -1,15 +1,37 @@
+import os
+
 import httpx
 import pytest
 
-BITBUCKET_URL = "http://localhost:7990"
-API_URL = "http://localhost:5002"
+# All overridable via env vars so this file can run against either the local
+# docker-compose stack (defaults below) or a real deployed environment — e.g. against
+# this platform's cluster via `kubectl port-forward`:
+#   kubectl -n bitbucket port-forward svc/bitbucket 17990:80
+#   kubectl -n devops-api port-forward svc/devops-api 15000:5000
+#   BITBUCKET_URL=http://localhost:17990 API_URL=http://localhost:15000 \
+#   BITBUCKET_USER=svc-devops-tashtiot BITBUCKET_PASS=<ldap-bind-password> \
+#   ADMIN_USER=admin \
+#   pytest tests/v1/bitbucket/test_bitbucket_project_e2e.py -v -m integration
+BITBUCKET_URL = os.environ.get("BITBUCKET_URL", "http://localhost:7990")
+API_URL = os.environ.get("API_URL", "http://localhost:5002")
 PREFIX = "/api/devops/v1/bitbucket"
-BITBUCKET_USER = "nati"
-BITBUCKET_PASS = "12345678"
+BITBUCKET_USER = os.environ.get("BITBUCKET_USER", "nati")
+BITBUCKET_PASS = os.environ.get("BITBUCKET_PASS", "12345678")
 
-PROJECT_KEY = "E2ETEST"
-PROJECT_NAME = "e2e-test"
-ADMIN_USER = "nati"
+PROJECT_KEY = os.environ.get("E2E_PROJECT_KEY", "E2ETEST")
+PROJECT_NAME = "e2etest"
+# admin_user schema pattern is ^[a-z0-9]+$ (lowercase alphanumeric only, no hyphens) —
+# BITBUCKET_USER itself often won't match (e.g. "svc-devops-tashtiot"), so this needs its
+# own override rather than reusing BITBUCKET_USER.
+ADMIN_USER = os.environ.get("E2E_ADMIN_USER", "nati")
+
+REQUEST_METADATA = {
+    "project": "devops-api-e2e",
+    "network": "test",
+    "region": "test",
+    "space": "test",
+    "environment": "test",
+}
 
 
 @pytest.fixture(scope="module")
@@ -53,11 +75,14 @@ def test_create_assign_and_delete_project(bb, api):
 
     # --- create project via our API ---
     r = api.post(f"{PREFIX}/", json={
-        "key": PROJECT_KEY,
-        "name": PROJECT_NAME,
-        "description": "End-to-end test project",
-        "public": False,
-        "admin_user": ADMIN_USER,
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "End-to-end test project",
+            "public": False,
+            "admin_user": ADMIN_USER,
+        },
     })
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
@@ -76,3 +101,25 @@ def test_create_assign_and_delete_project(bb, api):
 
     # --- verify project is gone ---
     assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
+def test_list_and_sync_user_directories(bb, api):
+    # --- list via our API ---
+    r = api.get(f"{PREFIX}/user-dirs")
+    assert r.status_code == 200, r.text
+    directories = r.json()
+    assert isinstance(directories, list)
+    assert len(directories) > 0, "Bitbucket has no configured user directories to sync"
+
+    # --- cross-check against Bitbucket directly (same Crowd-embedded resource) ---
+    direct = bb.get("/rest/crowd/latest/directory", headers={"Accept": "application/json"})
+    assert direct.status_code == 200, direct.text
+    direct_names = {d["name"] for d in direct.json()["directory"]}
+    api_names = {d["name"] for d in directories}
+    assert api_names == direct_names
+
+    # --- sync the first directory via our API ---
+    r = api.post(f"{PREFIX}/user-dirs/sync")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"

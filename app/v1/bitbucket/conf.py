@@ -15,5 +15,9 @@ class BitbucketConfig(BaseSettings):
         default="/rest/api/latest",
         description="API endpoint for bitbucket",
     )
+    BITBUCKET_CROWD_ENDPOINT: str = Field(
+        default="/rest/crowd/latest",
+        description="Crowd REST API base path — used for user directory listing and sync",
+    )
 
 config = BitbucketConfig()

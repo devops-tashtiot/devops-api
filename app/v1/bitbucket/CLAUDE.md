@@ -19,7 +19,7 @@ Passed into `get_v1_bitbucket_router(bitbucket_client)` at startup — no per-re
 | `GET` | `/user-dirs` | List user directories |
 | `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
-> Route paths above are devops-api's own; the upstream Bitbucket endpoints they call are `/rest/api/1.0/admin/user-directories` (see below).
+> Route paths above are devops-api's own; the upstream Bitbucket endpoints they call are `/rest/crowd/latest/directory` (see below).
 
 ## Project create flow (POST /)
 
@@ -79,23 +79,38 @@ PUT /rest/api/latest/projects/{key}/permissions/groups?name={admin_group}&permis
 → 204
 ```
 
-### List user directories — `GET /rest/api/1.0/admin/user-directories`
+### List user directories — `GET /rest/crowd/latest/directory`
 
 ```
-GET /rest/api/1.0/admin/user-directories
-→ 200, JSON array of directory objects
+GET /rest/crowd/latest/directory
+Header: Accept: application/json
+→ 200, {"directory": [{"name": ..., "link": [{"href": "https://.../directory/{id}", "rel": "self"}], "synchronisation"?: {...}}, ...]}
 ```
 
-Note: the path is `user-directories` (plural), not `user-dirs` — the latter 404s. Confirmed working against Bitbucket Server 8.19.5 local.
+Confirmed live against Bitbucket Data Center 10.2.2 with a real AD-connected directory.
+`GET /rest/api/1.0/admin/user-directories` (the Bitbucket-native admin REST API) also works
+and returns a friendlier `{"name", "type", "isActive", "description"}` shape, but **never
+exposes an id field at all** — not even embedded in a link — so it cannot support the sync
+operation below. Bitbucket shares the same Atlassian Crowd-embedded REST resource Jira and
+Confluence use (see `app/v1/jira/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`); its shape
+matches Confluence's exactly (`directory`/`link`, singular), not Jira's (`directories`/
+`links`, plural) — same underlying module, inconsistent JSON key pluralization across
+products. Neither response includes an `id` field on each directory object; the numeric ID
+only exists embedded in `link[0].href` (e.g. `.../directory/32769` → `32769`), which is what
+`sync_user_directory` parses out.
 
-### Sync user directory — `POST /rest/api/1.0/admin/user-directories/{id}/sync`
+### Sync user directory — `POST /rest/crowd/latest/directory/{id}/synchronise`
 
 ```
-POST /rest/api/1.0/admin/user-directories/{id}/sync
-→ 200/204 (unverified)
+POST /rest/crowd/latest/directory/{id}/synchronise
+Header: Accept: application/json
+→ id is parsed from the first listed directory's link[0].href, not a response "id" field
+   (see above — no such field exists in either the Crowd or native admin API)
 ```
 
-Note: this path is a best-effort rename to match the corrected collection path above — it 404s against Bitbucket Server 8.19.5 local, but that instance only has the built-in `INTERNAL` directory (sync only applies to connector/LDAP-type directories), so a genuine sync target was never available to confirm the correct path against. Re-verify once a real LDAP directory exists.
+British spelling (`synchronise`, not `sync`) — confirmed live: the old `.../admin/
+user-directories/{id}/sync` path this used to call 404s; this corrected Crowd-based path
+returns 200 against a real AD-connector directory.
 
 ## Schema — `ProjectSpec`
 
@@ -114,6 +129,7 @@ Model validator: at least one of `admin_user` / `admin_group` must be provided.
 | Field | Default | Description |
 |---|---|---|
 | `BITBUCKET_ENDPOINT` | `/rest/api/latest` | Bitbucket REST API base path |
+| `BITBUCKET_CROWD_ENDPOINT` | `/rest/crowd/latest` | Crowd REST API base path — used for user directory listing and sync |
 
 Global credentials (`BITBUCKET_USERNAME`, `BITBUCKET_PASSWORD`) and `BITBUCKET_API_URL` live in `global_conf.py`.
 

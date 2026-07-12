@@ -65,7 +65,30 @@ The app is a FastAPI service that orchestrates DNS records, HAProxy load-balance
 
 **Tests** — `tests/v1/` and `tests/v2/` mirror the app structure. Fixtures (client, mock clients, sample payloads) live in `conftest.py` files at each level. `pytest.ini` sets `pythonpath = .` so imports start from the repo root.
 
-**CI** — Woodpecker (`.woodpecker/build.yaml`). Only the Kaniko image-build step is active; test steps are commented out. Images are pushed to Artifactory on git tags.
+**CI** — GitHub Actions, `.github/workflows/docker-publish.yml`, is the *actual* active
+pipeline (do not trust `.woodpecker/build.yaml` — it targets a different registry
+(`artifactory.app.com`), its one step only runs `when: event: tag`, and no tag-push happens
+in normal workflow, so it never actually builds anything; treat it as dead/vestigial).
+
+The GitHub Actions workflow fires on **every push to `master`** (not just tags), unless the
+commit message contains `chore(release):` (guards against its own bump commits looping). On
+each qualifying push it, in order:
+
+1. Bumps the version via `git-cliff` (conventional-commit-driven — reads commit message
+   prefixes like `fix:`/`feat:` to decide the version bump) and writes `CHANGELOG.md`
+2. Commits `chore(release): vX.Y.Z [skip ci]` and creates+pushes a matching git tag
+3. Builds and pushes `ghcr.io/devops-tashtiot/devops-api:vX.Y.Z` (and `:latest`)
+4. Clones `devtools-definition`, `sed`s the new tag into
+   `devtools/devops-api/values.yaml`, commits, and pushes to its `main` — **no manual
+   version bump in `devtools-definition` is needed or expected; a bot does it
+   automatically within ~1 minute of your push.**
+
+Net effect: **a plain `git push` to this repo's `master` is a full release+deploy** — ArgoCD
+picks up the `devtools-definition` bump and rolls the new image out on its own. There is no
+separate "cut a release" step to remember. To check whether a given push actually shipped:
+`gh run list --repo devops-tashtiot/devops-api` (look for a `success` "Build & Publish Docker
+Image" run against your commit), then check `devtools-definition`'s git log for the matching
+`chore(devops-api): bump image tag to vX.Y.Z` commit.
 
 ---
 

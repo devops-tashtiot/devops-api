@@ -60,11 +60,11 @@ async def assign_admin_permission(bitbucket_client: Any, payload: ProjectSpec):
 
 
 async def list_user_directories(bitbucket_client: Any) -> list[dict]:
-    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-directories"
+    endpoint = f"{config.BITBUCKET_CROWD_ENDPOINT}/directory"
     try:
-        response = await bitbucket_client.get(endpoint)
+        response = await bitbucket_client.get(endpoint, headers={"Accept": "application/json"})
         _handle_response(response)
-        return response.json()
+        return response.json()["directory"]
     except Exception as e:
         logger.error(f"Unexpected error listing user directories: {str(e)}")
         raise
@@ -74,10 +74,10 @@ async def sync_user_directory(bitbucket_client: Any) -> None:
     directories = await list_user_directories(bitbucket_client)
     if not directories:
         raise HTTPException(status_code=404, detail="No user directories found in Bitbucket")
-    directory_id = directories[0]["id"]
-    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/user-directories/{directory_id}/sync"
+    directory_id = directories[0]["link"][0]["href"].rstrip("/").rsplit("/", 1)[-1]
+    endpoint = f"{config.BITBUCKET_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
     try:
-        response = await bitbucket_client.post(endpoint)
+        response = await bitbucket_client.post(endpoint, headers={"Accept": "application/json"})
         _handle_response(response)
     except Exception as e:
         logger.error(f"Unexpected error syncing user directory {directory_id}: {str(e)}")
