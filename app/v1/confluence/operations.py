@@ -1,16 +1,15 @@
 import asyncio
 import json
 import re
-from typing import Any
+from typing import Any, Awaitable, Callable, Optional
 
-import httpx
 from fastapi import HTTPException
 from loguru import logger
 
 from .conf import config
 from .schemas import PluginInstallSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec
 from app.global_conf import global_config
-from app.helpers import fetch_from_s3
+from app.helpers import fetch_from_s3, upload_to_s3
 
 
 def _handle_response(response):
@@ -180,30 +179,30 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
     )
 
 
-async def list_user_directories(confluence_client: Any) -> list[dict]:
-    endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory"
-    try:
-        response = await confluence_client.get(endpoint, headers={"Accept": "application/json"})
-        _handle_response(response)
-        return response.json()["directory"]
-    except Exception as e:
-        logger.error(f"Unexpected error listing user directories: {str(e)}")
-        raise
+# async def list_user_directories(confluence_client: Any) -> list[dict]:
+#     endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory"
+#     try:
+#         response = await confluence_client.get(endpoint, headers={"Accept": "application/json"})
+#         _handle_response(response)
+#         return response.json()["directory"]
+#     except Exception as e:
+#         logger.error(f"Unexpected error listing user directories: {str(e)}")
+#         raise
 
 
-async def sync_user_directory(confluence_client: Any) -> None:
-    # Confluence has no supported way to manually trigger a directory sync — confirmed live
-    # against a real AD-connector directory ID: POST /rest/crowd/latest/directory/{id}/synchronise
-    # 404s (identical to Bitbucket, see app/v1/bitbucket/CLAUDE.md for the full investigation —
-    # same underlying Atlassian Crowd-embedded module, same missing REST trigger, same undocumented
-    # web-UI-only alternative that proved unreliable there). Directories sync on Confluence's own
-    # automatic schedule; there is no reliable programmatic way to force one on demand.
-    raise HTTPException(
-        status_code=501,
-        detail="Confluence has no supported API to trigger a user directory sync on demand. "
-        "Directories sync on Confluence's own automatic schedule; use the admin UI to check "
-        "status, not this endpoint to force one.",
-    )
+# async def sync_user_directory(confluence_client: Any) -> None:
+#     # Confluence has no supported way to manually trigger a directory sync — confirmed live
+#     # against a real AD-connector directory ID: POST /rest/crowd/latest/directory/{id}/synchronise
+#     # 404s (identical to Bitbucket, see app/v1/bitbucket/CLAUDE.md for the full investigation —
+#     # same underlying Atlassian Crowd-embedded module, same missing REST trigger, same undocumented
+#     # web-UI-only alternative that proved unreliable there). Directories sync on Confluence's own
+#     # automatic schedule; there is no reliable programmatic way to force one on demand.
+#     raise HTTPException(
+#         status_code=501,
+#         detail="Confluence has no supported API to trigger a user directory sync on demand. "
+#         "Directories sync on Confluence's own automatic schedule; use the admin UI to check "
+#         "status, not this endpoint to force one.",
+#     )
 
 
 async def uninstall_plugin(confluence_client: Any, plugin_key: str) -> None:
@@ -278,40 +277,12 @@ async def download_export(confluence_client: Any, job_id: int) -> bytes:
 
 async def upload_archive_to_s3(archive_bytes: bytes, archive_name: str) -> None:
     url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{archive_name}"
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-            response = await client.put(
-                url,
-                content=archive_bytes,
-                headers={"Content-Type": "application/zip"},
-            )
-            if response.status_code not in (200, 204):
-                raise HTTPException(status_code=502, detail=f"S3 upload returned {response.status_code}")
-            logger.info(f"Uploaded {archive_name} to S3 ({len(archive_bytes)} bytes)")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to upload archive {archive_name} to S3: {e}")
-        raise HTTPException(status_code=502, detail=f"S3 upload failed: {e}")
+    await upload_to_s3(url, archive_bytes, content_type="application/zip", label=archive_name)
 
 
 async def upload_plugin_to_s3(plugin_bytes: bytes, plugin_name: str) -> None:
     url = f"{global_config.CONFLUENCE_S3_PLUGINS_BASE_URL}/{plugin_name}"
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-            response = await client.put(
-                url,
-                content=plugin_bytes,
-                headers={"Content-Type": "application/java-archive"},
-            )
-            if response.status_code not in (200, 204):
-                raise HTTPException(status_code=502, detail=f"S3 upload returned {response.status_code}")
-            logger.info(f"Uploaded plugin {plugin_name} to S3 ({len(plugin_bytes)} bytes)")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to upload plugin {plugin_name} to S3: {e}")
-        raise HTTPException(status_code=502, detail=f"S3 plugin upload failed: {e}")
+    await upload_to_s3(url, plugin_bytes, content_type="application/java-archive", label=plugin_name)
 
 
 
