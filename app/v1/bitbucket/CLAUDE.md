@@ -104,13 +104,22 @@ only exists embedded in `link[0].href` (e.g. `.../directory/32769` → `32769`),
 ```
 POST /rest/crowd/latest/directory/{id}/synchronise
 Header: Accept: application/json
-→ id is parsed from the first listed directory's link[0].href, not a response "id" field
+→ id is parsed from href on the directory picked below, not a response "id" field
    (see above — no such field exists in either the Crowd or native admin API)
 ```
 
 British spelling (`synchronise`, not `sync`) — confirmed live: the old `.../admin/
 user-directories/{id}/sync` path this used to call 404s; this corrected Crowd-based path
 returns 200 against a real AD-connector directory.
+
+**Directory selection — do not take `directories[0]` blindly.** The built-in internal
+directory (`"Bitbucket Internal Directory"`) is always listed first and cannot be synced —
+POSTing its ID to `.../synchronise` 404s against Bitbucket itself (confirmed live). Only
+connector/LDAP directories are syncable, and only those entries carry a `"synchronisation"`
+key in the list response — `sync_user_directory` picks the first directory that has that key,
+not the first directory in the array. If no directory has that key (single-tenant instance
+with no LDAP directory configured at all), it raises 404 rather than attempting a sync that
+would fail anyway.
 
 ## Schema — `ProjectSpec`
 

@@ -74,7 +74,13 @@ async def sync_user_directory(bitbucket_client: Any) -> None:
     directories = await list_user_directories(bitbucket_client)
     if not directories:
         raise HTTPException(status_code=404, detail="No user directories found in Bitbucket")
-    directory_id = directories[0]["link"][0]["href"].rstrip("/").rsplit("/", 1)[-1]
+    # Only connector/LDAP directories are syncable — the built-in internal directory has no
+    # "synchronisation" key and 404s if you try. Picking directories[0] blindly is wrong: the
+    # internal directory is consistently listed first, ahead of any real connector directory.
+    syncable = next((d for d in directories if "synchronisation" in d), None)
+    if syncable is None:
+        raise HTTPException(status_code=404, detail="No syncable (connector/LDAP) user directory found in Bitbucket")
+    directory_id = syncable["link"][0]["href"].rstrip("/").rsplit("/", 1)[-1]
     endpoint = f"{config.BITBUCKET_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
     try:
         response = await bitbucket_client.post(endpoint, headers={"Accept": "application/json"})

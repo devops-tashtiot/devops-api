@@ -156,8 +156,14 @@ def test_delete_project_conflict_returns_error(mock_bitbucket_client):
 
 BITBUCKET_DIRECTORIES_RESPONSE = {
     "directory": [
+        # Internal directory is listed first and has no "synchronisation" key — not syncable.
         {"name": "Bitbucket Internal Directory", "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/32769", "rel": "self"}]},
-        {"name": "Active Directory server", "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/13139969", "rel": "self"}]},
+        # Connector directory — has "synchronisation", this is the one that should get synced.
+        {
+            "name": "Active Directory server",
+            "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/13139969", "rel": "self"}],
+            "synchronisation": {"syncStatus": "Incremental synchronisation completed successfully."},
+        },
     ]
 }
 
@@ -186,7 +192,7 @@ def test_sync_user_dir_returns_200(mock_bitbucket_client):
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
     sync_endpoint = mock_bitbucket_client.post.call_args.args[0]
-    assert sync_endpoint.endswith("/directory/32769/synchronise")
+    assert sync_endpoint.endswith("/directory/13139969/synchronise")
 
 
 def test_sync_user_dir_error_returns_error_response(mock_bitbucket_client):
@@ -212,3 +218,20 @@ def test_sync_user_dir_no_directories_returns_404(mock_bitbucket_client):
     response = c.post(f"{PREFIX}/user-dirs/sync")
     assert response.status_code == 404
     assert response.json()["status"] == "Failed"
+
+
+def test_sync_user_dir_only_internal_directory_returns_404(mock_bitbucket_client):
+    # Only a non-syncable internal directory exists (no connector/LDAP directory configured) —
+    # must not blindly try to sync it (that 404s against Bitbucket itself).
+    mock_bitbucket_client.get = AsyncMock(return_value=MagicMock(
+        status_code=200, text="", json=MagicMock(return_value={"directory": [
+            {"name": "Bitbucket Internal Directory", "link": [{"href": "http://bitbucket/rest/crowd/latest/directory/32769", "rel": "self"}]},
+        ]})
+    ))
+    app = FastAPI()
+    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"
+    mock_bitbucket_client.post.assert_not_called()
