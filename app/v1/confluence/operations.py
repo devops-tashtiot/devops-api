@@ -43,6 +43,11 @@ async def create_space(confluence_client: Any, payload: SpaceSpec):
 
 
 async def delete_space(confluence_client: Any, key: str):
+    # Confluence's DELETE /space/{key} returns 2xx as soon as the deletion job is *accepted*,
+    # not once the space is actually gone — confirmed live: a GET immediately after a
+    # "successful" delete still returned the full space (200), and only 404'd ~20-30s later.
+    # Poll until the space actually 404s so callers get an honest "successful" only once it's
+    # true — otherwise an immediate recreate with the same key could race the background job.
     endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}"
     try:
         response = await confluence_client.delete(endpoint)
@@ -50,6 +55,18 @@ async def delete_space(confluence_client: Any, key: str):
     except Exception as e:
         logger.error(f"Unexpected error deleting space {key}: {str(e)}")
         raise
+
+    for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
+        check = await confluence_client.get(endpoint)
+        if check.status_code == 404:
+            logger.info(f"Space {key} deletion confirmed after {attempt + 1} poll(s)")
+            return
+        await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
+    raise HTTPException(
+        status_code=504,
+        detail=f"Space {key} delete was accepted but not confirmed within "
+        f"{config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
+    )
 
 
 async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):

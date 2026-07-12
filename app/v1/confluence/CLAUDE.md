@@ -33,6 +33,17 @@ create_space
 
 `admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided. Both can be provided.
 
+## Delete space — asynchronous, `delete_space` polls until confirmed
+
+`DELETE /rest/api/space/{key}` returns 2xx as soon as Confluence **accepts** the deletion, not
+once the space is actually removed — confirmed live: `GET /space/{key}` immediately after a
+"successful" delete still returned the full space (`200`), and only started 404ing ~20-30s
+later. `delete_space` now polls `GET /space/{key}` (reusing `CONFLUENCE_JOB_POLL_INTERVAL`/
+`CONFLUENCE_JOB_MAX_POLLS`, same as the export/import job-polling below) until it 404s before
+reporting success, raising `504` if it never confirms within the timeout. Without this, a
+caller that immediately tries to recreate a space with the same key right after a "successful"
+delete could race the background job.
+
 ### Space permission calls (known working on Confluence 9.3.1)
 
 `POST /rest/api/latest/space/{key}/permission` (singular) returns 404 — do **not** use it.

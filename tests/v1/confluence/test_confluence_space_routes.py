@@ -113,6 +113,53 @@ def test_create_space_confluence_error_returns_error_response(mock_confluence_cl
     assert response.json()["status"] == "Failed"
 
 
+# --- delete space ---
+# Confluence's DELETE /space/{key} only accepts the deletion — the space is removed
+# asynchronously. delete_space polls GET /space/{key} until it 404s before reporting success.
+
+def test_delete_space_returns_200_once_confirmed_gone(client, mock_confluence_client):
+    mock_confluence_client.delete = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+    # First poll still finds the space (200), second poll confirms it's gone (404).
+    mock_confluence_client.get = AsyncMock(side_effect=[
+        MagicMock(status_code=200, text=""),
+        MagicMock(status_code=404, text=""),
+    ])
+
+    response = client.delete(f"{PREFIX}/ZAITEST")
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+    assert mock_confluence_client.get.call_count == 2
+
+
+def test_delete_space_times_out_if_never_confirmed(mock_confluence_client, monkeypatch):
+    from app.v1.confluence import operations as confluence_ops
+
+    monkeypatch.setattr(confluence_ops.config, "CONFLUENCE_JOB_MAX_POLLS", 2)
+    monkeypatch.setattr(confluence_ops.config, "CONFLUENCE_JOB_POLL_INTERVAL", 0)
+
+    mock_confluence_client.delete = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+    mock_confluence_client.get = AsyncMock(return_value=MagicMock(status_code=200, text=""))  # never 404s
+
+    app = FastAPI()
+    app.include_router(get_v1_confluence_router(mock_confluence_client))
+    c = TestClient(app)
+    response = c.delete(f"{PREFIX}/ZAITEST")
+    assert response.status_code == 504
+    assert response.json()["status"] == "Failed"
+    assert mock_confluence_client.get.call_count == 2
+
+
+def test_delete_space_error_returns_error_response(mock_confluence_client):
+    mock_confluence_client.delete = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
+    app = FastAPI()
+    app.include_router(get_v1_confluence_router(mock_confluence_client))
+    c = TestClient(app)
+    response = c.delete(f"{PREFIX}/NOEXIST")
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"
+    mock_confluence_client.get.assert_not_called()
+
+
 # --- user-dirs ---
 
 def test_list_user_dirs_returns_200(mock_confluence_client):
