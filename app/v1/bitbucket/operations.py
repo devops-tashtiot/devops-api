@@ -28,7 +28,44 @@ async def create_project(bitbucket_client: Any, payload: ProjectSpec):
         logger.error(f"Unexpected error creating project {key}: {str(e)}")
         raise
 
+async def list_repos(bitbucket_client: Any, key: str) -> list[dict]:
+    endpoint = f"{config.BITBUCKET_ENDPOINT}/projects/{key}/repos"
+    repos = []
+    start = 0
+    try:
+        while True:
+            response = await bitbucket_client.get(endpoint, params={"start": start, "limit": 100})
+            _handle_response(response)
+            page = response.json()
+            repos.extend(page["values"])
+            if page.get("isLastPage", True):
+                break
+            start = page["nextPageStart"]
+        return repos
+    except Exception as e:
+        logger.error(f"Unexpected error listing repos for project {key}: {str(e)}")
+        raise
+
+
+async def delete_repo(bitbucket_client: Any, key: str, repo_slug: str) -> None:
+    endpoint = f"{config.BITBUCKET_ENDPOINT}/projects/{key}/repos/{repo_slug}"
+    try:
+        response = await bitbucket_client.delete(endpoint)
+        _handle_response(response)
+        logger.info(f"Repo {key}/{repo_slug} deleted")
+    except Exception as e:
+        logger.error(f"Unexpected error deleting repo {key}/{repo_slug}: {str(e)}")
+        raise
+
+
 async def delete_project(bitbucket_client: Any, key: str) -> None:
+    # Bitbucket refuses to delete a project that still contains repositories — confirmed
+    # live: DELETE /projects/{key} returns 409 IntegrityException ("cannot be deleted because
+    # it has repositories") whenever any repo exists under it. Delete all repos first so the
+    # project delete itself can succeed.
+    for repo in await list_repos(bitbucket_client, key):
+        await delete_repo(bitbucket_client, key, repo["slug"])
+
     endpoint = f"{config.BITBUCKET_ENDPOINT}/projects/{key}"
     try:
         response = await bitbucket_client.delete(endpoint)

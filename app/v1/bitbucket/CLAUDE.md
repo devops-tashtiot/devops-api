@@ -48,12 +48,40 @@ Body: {"key": key, "name": name, "description": description, "public": false}
 
 Projects are always created as private (`public: false` is hardcoded — the field is not exposed to callers).
 
-### Delete project — `DELETE /rest/api/latest/projects/{key}`
+### Delete project — cascades repo deletion first
+
+Bitbucket **refuses to delete a project that still contains repositories** — confirmed live:
+`DELETE /rest/api/latest/projects/{key}` on a project with any repo inside returns `409` with
+`{"errors":[{"message":"The project \"{key}\" cannot be deleted because it has repositories.",
+"exceptionName":"com.atlassian.bitbucket.IntegrityException"}]}`. This is unrelated to repo
+size — it happens even for a project containing a single empty repo.
+
+`delete_project` therefore lists all repos under the project first and deletes each one
+before deleting the project itself:
 
 ```
+GET    /rest/api/latest/projects/{key}/repos?start={start}&limit=100   (paginated via list_repos)
+  → {"values": [{"slug": ..., ...}], "isLastPage": bool, "nextPageStart": int}
+DELETE /rest/api/latest/projects/{key}/repos/{repo_slug}    for each repo
+  → 202 (Accepted — confirmed live this is genuinely asynchronous under the hood; Bitbucket
+     purges the underlying git data in the background)
 DELETE /rest/api/latest/projects/{key}
-→ 204
+  → 204
 ```
+
+No polling is needed between the repo deletes and the project delete: confirmed live with a
+real 200MB git repo — even though the repo delete itself returns `202`, an immediate `GET` on
+that repo already 404s, and the project delete that follows immediately succeeds with `204`.
+Bitbucket's REST-visible state (both repo and project) flips to "gone" synchronously with the
+API response; only the actual on-disk data purge happens asynchronously in the background.
+
+### Delete project — no lag on the project delete itself, confirmed at scale
+
+`DELETE /rest/api/latest/projects/{key}` (once the project has no repos left) returns `204`,
+and immediate `GET`s on the same project 404 right away — confirmed live with up to 20
+consecutive immediate polls, both against an empty project and one that previously held a
+200MB repo. Unlike Confluence's space delete (see `app/v1/confluence/CLAUDE.md`), there is no
+accepted-but-not-yet-gone race here, so `delete_project` does not poll for confirmation.
 
 ### Assign user admin — pre-check + `PUT`
 
