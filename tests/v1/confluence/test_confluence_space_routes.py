@@ -127,14 +127,14 @@ def test_list_user_dirs_returns_200(mock_confluence_client):
     c = TestClient(app)
     response = c.get(f"{PREFIX}/user-dirs")
     assert response.status_code == 200
-    assert "directory" in response.json()
+    assert response.json() == [{"name": "Internal Dir"}]
 
 
 def test_list_user_dirs_calls_crowd_endpoint(mock_confluence_client):
     dirs_response = MagicMock()
     dirs_response.status_code = 200
     dirs_response.text = ""
-    dirs_response.json.return_value = {}
+    dirs_response.json.return_value = {"directory": []}
     mock_confluence_client.get = AsyncMock(return_value=dirs_response)
 
     app = FastAPI()
@@ -146,40 +146,13 @@ def test_list_user_dirs_calls_crowd_endpoint(mock_confluence_client):
     assert "directory" in endpoint
 
 
-def test_sync_user_dir_returns_200(mock_confluence_client):
-    sync_response = MagicMock()
-    sync_response.status_code = 200
-    sync_response.text = ""
-    mock_confluence_client.post = AsyncMock(return_value=sync_response)
-
-    app = FastAPI()
-    app.include_router(get_v1_confluence_router(mock_confluence_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/12345/sync")
-    assert response.status_code == 200
-    assert response.json()["status"] == "successful"
-
-
-def test_sync_user_dir_calls_synchronise_endpoint(mock_confluence_client):
-    sync_response = MagicMock()
-    sync_response.status_code = 200
-    sync_response.text = ""
-    mock_confluence_client.post = AsyncMock(return_value=sync_response)
-
-    app = FastAPI()
-    app.include_router(get_v1_confluence_router(mock_confluence_client))
-    c = TestClient(app)
-    c.post(f"{PREFIX}/user-dirs/12345/sync")
-    endpoint = mock_confluence_client.post.call_args.args[0]
-    assert "12345" in endpoint
-    assert "synchronise" in endpoint
-
-
-def test_sync_user_dir_error_returns_error_response(mock_confluence_client):
-    mock_confluence_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
-    app = FastAPI()
-    app.include_router(get_v1_confluence_router(mock_confluence_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/99999/sync")
-    assert response.status_code == 404
+def test_sync_user_dir_returns_501_not_supported(client, mock_confluence_client):
+    # Confluence has no supported way to trigger a directory sync on demand — confirmed live
+    # (see app/v1/bitbucket/CLAUDE.md for the shared investigation): the Crowd-embedded
+    # synchronise path 404s even with a correct connector directory ID. Must always return
+    # 501 without attempting any call to Confluence.
+    response = client.post(f"{PREFIX}/user-dirs/sync")
+    assert response.status_code == 501
     assert response.json()["status"] == "Failed"
+    mock_confluence_client.get.assert_not_called()
+    mock_confluence_client.post.assert_not_called()

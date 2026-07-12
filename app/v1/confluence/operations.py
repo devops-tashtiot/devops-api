@@ -121,24 +121,25 @@ async def list_user_directories(confluence_client: Any) -> list[dict]:
     try:
         response = await confluence_client.get(endpoint, headers={"Accept": "application/json"})
         _handle_response(response)
-        return response.json()
+        return response.json()["directory"]
     except Exception as e:
         logger.error(f"Unexpected error listing user directories: {str(e)}")
         raise
 
 
 async def sync_user_directory(confluence_client: Any) -> None:
-    directories = await list_user_directories(confluence_client)
-    if not directories:
-        raise HTTPException(status_code=404, detail="No user directories found in Confluence")
-    directory_id = directories[0]["id"]
-    endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
-    try:
-        response = await confluence_client.post(endpoint, headers={"Accept": "application/json"})
-        _handle_response(response)
-    except Exception as e:
-        logger.error(f"Unexpected error syncing user directory {directory_id}: {str(e)}")
-        raise
+    # Confluence has no supported way to manually trigger a directory sync — confirmed live
+    # against a real AD-connector directory ID: POST /rest/crowd/latest/directory/{id}/synchronise
+    # 404s (identical to Bitbucket, see app/v1/bitbucket/CLAUDE.md for the full investigation —
+    # same underlying Atlassian Crowd-embedded module, same missing REST trigger, same undocumented
+    # web-UI-only alternative that proved unreliable there). Directories sync on Confluence's own
+    # automatic schedule; there is no reliable programmatic way to force one on demand.
+    raise HTTPException(
+        status_code=501,
+        detail="Confluence has no supported API to trigger a user directory sync on demand. "
+        "Directories sync on Confluence's own automatic schedule; use the admin UI to check "
+        "status, not this endpoint to force one.",
+    )
 
 
 async def uninstall_plugin(confluence_client: Any, plugin_key: str) -> None:

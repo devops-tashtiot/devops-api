@@ -171,12 +171,8 @@ Returns all user directories configured in Confluence (including AD/LDAP directo
 
 ---
 
-### `POST /user-dirs/{directory_id}/sync`
+### `POST /user-dirs/sync`
 
-Triggers an Active Directory synchronisation for the specified user directory.
-
-**Path parameter**
-
-| Param | Type | Description |
-|---|---|---|
-| `directory_id` | integer | ID of the directory to sync (use `GET /user-dirs` to find IDs) |
+**Always returns `501`.** Confluence has no supported API to trigger a directory sync on
+demand — confirmed by live testing, see `app/v1/confluence/CLAUDE.md`. Directories sync on
+Confluence's own automatic schedule; this endpoint cannot force one.

@@ -88,9 +88,18 @@ poll GET /rest/api/backup-restore/jobs/{id}  until jobState == "FINISHED"
 ## User directories (Crowd REST API)
 
 ```
-GET  /rest/crowd/latest/directory               → list all directories (auto-selects first)
-POST /rest/crowd/latest/directory/{id}/synchronise  → trigger sync (id taken from list response)
+GET  /rest/crowd/latest/directory   → list all directories, unwrapped from {"directory": [...]}
 ```
+
+`sync_user_directory` always raises `501` — **Confluence has no supported way to trigger a
+directory sync on demand**. Confirmed live: `POST /rest/crowd/latest/directory/{id}/
+synchronise` 404s even against a real AD-connector directory ID. This is the identical root
+cause documented in detail in `app/v1/bitbucket/CLAUDE.md` (same underlying Atlassian
+Crowd-embedded module, same missing REST trigger) — see that file for the full investigation,
+including why the undocumented web-UI servlet alternative that exists on Bitbucket isn't
+usable either (its response can't distinguish a real sync from a silent no-op). Directories
+sync on Confluence's own automatic schedule; there is no reliable programmatic way to force
+one.
 
 ## Config fields (`conf.py`)
 
