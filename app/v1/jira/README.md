@@ -22,10 +22,12 @@ Rolls back (deletes the project) automatically if the permission step fails.
 | `key` | string | yes | `^[A-Z][A-Z0-9]+$`, max 10 | Project key (uppercase, unique) |
 | `name` | string | yes | max 255 | Project display name |
 | `description` | string | yes | max 1000 | Project description |
-| `admin_user` | string | at least one | `^[a-z0-9_\-]+$`, max 50 | Username to set as project lead and administrator |
-| `admin_group` | string | at least one | `^[a-zA-Z0-9_\-]+$`, max 255 | Group name to receive project administrator role |
+| `admin_user` | string | yes | `^[a-z0-9_\-]+$`, max 50 | Username to set as project lead and administrator |
+| `admin_group` | string | no | `^[a-zA-Z0-9_\-]+$`, max 255 | Group name to additionally receive project administrator role |
 
-> At least one of `admin_user` or `admin_group` must be provided. Both can be given simultaneously.
+> `admin_user` is always required — Jira's project-creation API unconditionally requires a
+> lead user; a group can never substitute for it (unlike Bitbucket/Confluence, where either
+> admin_user or admin_group alone is enough). `admin_group` may optionally be given as well.
 
 ---
 

@@ -20,7 +20,9 @@ VALID_USER_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {"key": "MYPROJ", "name": "My Project", "description": "A test project", "admin_user": "admin"},
 }
-VALID_GROUP_PAYLOAD = {
+# Jira unconditionally requires a lead (a user, never a group) to create a project —
+# confirmed live, see app/v1/jira/CLAUDE.md. admin_group alone is therefore invalid input.
+GROUP_ONLY_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {"key": "GRPPROJ", "name": "Group Project", "description": "A group project", "admin_group": "dev-team"},
 }
@@ -38,10 +40,9 @@ def test_create_project_with_user_returns_200(client):
     assert response.json()["status"] == "successful"
 
 
-def test_create_project_with_group_returns_200(client):
-    response = client.post(f"{PREFIX}/", json=VALID_GROUP_PAYLOAD)
-    assert response.status_code == 200
-    assert response.json()["status"] == "successful"
+def test_create_project_group_only_returns_422(client):
+    response = client.post(f"{PREFIX}/", json=GROUP_ONLY_PAYLOAD)
+    assert response.status_code == 422
 
 
 def test_create_project_with_both_returns_200(client):
@@ -58,12 +59,6 @@ def test_create_project_calls_post_with_correct_endpoint(client, mock_jira_clien
 
 def test_create_project_with_user_assigns_role(client, mock_jira_client):
     client.post(f"{PREFIX}/", json=VALID_USER_PAYLOAD)
-    post_endpoints = [c.args[0] for c in mock_jira_client.post.call_args_list]
-    assert any("role" in ep for ep in post_endpoints)
-
-
-def test_create_project_with_group_assigns_role(client, mock_jira_client):
-    client.post(f"{PREFIX}/", json=VALID_GROUP_PAYLOAD)
     post_endpoints = [c.args[0] for c in mock_jira_client.post.call_args_list]
     assert any("role" in ep for ep in post_endpoints)
 

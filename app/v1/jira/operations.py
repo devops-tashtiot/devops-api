@@ -25,7 +25,7 @@ async def create_project(jira_client: Any, payload: ProjectSpec) -> None:
             "name": payload.name,
             "description": payload.description,
             "projectTypeKey": "software",
-            **({"lead": payload.admin_user} if payload.admin_user else {}),
+            "lead": payload.admin_user,
         }
         response = await jira_client.post(endpoint, json=body)
         _handle_response(response)

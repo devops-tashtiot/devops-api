@@ -21,8 +21,7 @@ def get_v1_jira_router(jira_client: Any):
     async def create_new_project(payload: JiraProjectRequest) -> JSONResponse:
         try:
             await create_project(jira_client, payload.spec)
-            if payload.spec.admin_user:
-                await assign_project_admin_user(jira_client, payload.spec)
+            await assign_project_admin_user(jira_client, payload.spec)
             if payload.spec.admin_group:
                 await assign_project_admin_group(jira_client, payload.spec)
             return SuccessResponse(status="successful")
