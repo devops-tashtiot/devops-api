@@ -174,6 +174,61 @@ Local SonarQube: `docker compose -f ../docker-compose.sonarqube.yaml up -d`
 
 ---
 
+## Checking all devtool APIs live against the cluster
+
+When asked to "check all tools" / "check all APIs work" / "check <service> APIs work", this
+means verifying the deployed devops-api against the **real** Minikube cluster (not local
+docker-compose), for every route in that module — not just spot-checking one endpoint. Follow
+this exact sequence (established doing this for Bitbucket and Jira):
+
+1. **Confirm AWS creds are live**: `aws sts get-caller-identity` (profile
+   `342831714456_Workload-Admin-PS`, region `il-central-1`). If expired (`RequestExpired`),
+   ask the user to refresh — you cannot do this yourself (browser SSO).
+2. **Confirm the Minikube EC2 instance and `devtools-rds` are running**
+   (`aws ec2 describe-instances` / `aws rds describe-db-instances` on instance
+   `i-0a9e2bbdd44475741` / db `devtools-rds`). If either is `stopped`, ask before starting them
+   — `devtools-rds` in particular takes several minutes and DB-dependent pods (Bitbucket,
+   Confluence, Jira, etc.) will show `Error`/`CrashLoopBackOff` until it's back; they recover
+   on their own once RDS is available again, no manual pod restart needed.
+3. **SSM into the instance** for every subsequent command: `aws ssm send-command
+   --instance-ids i-0a9e2bbdd44475741 --document-name AWS-RunShellScript --parameters
+   'commands=["export KUBECONFIG=/root/.kube/config; <cmd>"]'`, then
+   `aws ssm get-command-invocation` to read the result. The kubeconfig lives at
+   `/root/.kube/config` (SSM runs as root) — plain `kubectl` with no `KUBECONFIG` set fails
+   with a `localhost:8080` connection-refused error.
+4. **Confirm devops-api's actual deployed image tag** (`kubectl get pods -n devops-api -o
+   jsonpath={.items[0].spec.containers[0].image}`) so you know whether you're verifying
+   already-pushed code or need to push first.
+5. **Exercise every route** via `kubectl exec` into a pod that already has `curl`/`python3`
+   (the target service's own pod, e.g. `bitbucket-0`/`jira-0`, works well) hitting devops-api's
+   ClusterIP directly (`kubectl get svc -n devops-api` for the IP) — this tests the real code
+   path end-to-end, not a mocked unit test. For anything destructive (create/delete), always
+   clean up the test artifact afterward and confirm it's actually gone with a raw call to the
+   upstream service directly (not just trusting devops-api's response).
+6. **Cross-check against the upstream service directly** where relevant (e.g. does the raw
+   Bitbucket/Jira/Confluence API agree with what devops-api reported?) — this is how the
+   Bitbucket repo-cascade-delete bug and the Jira mandatory-lead / broken-sync bugs were found.
+   Don't just trust devops-api's response; verify state changed (or didn't) on the real service.
+7. **Document any bug found** in that module's `CLAUDE.md` per the maintenance rule below,
+   including what was tried and the exact live response — not just a description.
+8. **Write or update a real e2e test** at `tests/v1/<service>/test_<service>_e2e.py` (naming:
+   `test_bitbucket_e2e.py`, `test_jira_e2e.py` — no `_project_` in the name) mirroring the
+   existing pattern: module-scoped `httpx.Client` fixtures for both the raw service and
+   devops-api, env-var overrides so the same file works locally or via
+   `kubectl port-forward` + `pytest -m integration`, one test per route/behavior, and cleanup
+   of anything created. These hit real services — never mock in this file (unit tests with
+   mocks belong in `test_<service>_routes.py` / `test_<service>_schema.py` instead, per
+   "Writing tests for a service module" above).
+9. **When asked to "run all tests," run them on the EC2 instance** (via the SSM pattern above,
+   or a script copied onto the instance/pod), not as a local `pytest` invocation tunneled
+   through SSM port-forwarding — that tunnel is unreliable in this environment (works
+   intermittently, then fails with a client-side "Plugin with name Port not found" error on
+   retries). A local `pytest --collect-only` or `python -m py_compile` for a quick
+   syntax/sanity check is fine; actually exercising the live assertions should happen on the
+   instance.
+
+---
+
 ## README maintenance rule
 
 Every module under `app/v1/` has a `README.md`. **Any time you add, remove, or change an endpoint, a request field, or a config-driven behaviour in a module, you must update that module's `README.md` to reflect the change.** The README must always stay in sync with the actual routes and schemas.
