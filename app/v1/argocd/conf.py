@@ -41,15 +41,5 @@ class ArgocdConfig(BaseSettings):
         description="Max seconds to wait for an ArgoCD application operation to complete",
     )
 
-    ARGOCD_SCHEME: str = Field(
-        default="https",
-        description="URL scheme for consumer ArgoCD instances (use 'http' for local dev)",
-    )
-
-    ARGOCD_PORT: str = Field(
-        default="",
-        description="Port for consumer ArgoCD instances — empty means default for the scheme (use '9000' for local dev)",
-    )
-
 
 config = ArgocdConfig()
