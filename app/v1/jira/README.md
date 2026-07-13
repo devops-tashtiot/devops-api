@@ -56,5 +56,6 @@ Administrator.
 
 ### `POST /user-dirs/sync`
 
-Triggers a synchronisation of the first user directory returned by `GET /user-dirs` (ID is
-auto-discovered, not supplied by the caller).
+Always returns `501` — Jira has no supported API to trigger a user directory sync on demand
+(confirmed live; see `app/v1/jira/CLAUDE.md`). Directories sync on Jira's own automatic
+schedule; use the admin UI to check status, not this endpoint to force one.

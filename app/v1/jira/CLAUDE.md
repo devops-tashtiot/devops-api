@@ -108,29 +108,25 @@ account — `ADMINISTER: true` alone gets a 403 "Client must be authenticated as
 administrator"; the account needs `SYSTEM_ADMIN: true` (`GET /rest/api/2/mypermissions`),
 normally granted via the `jira-system-administrators` group.
 
-### Sync user directory — broken two ways, confirmed live
+### Sync user directory — unsupported, `sync_user_directory` always raises `501`
 
-**Bug 1 — wrong directory picked.** `sync_user_directory` always uses `directories[0]`, which
-on a real instance is the built-in "Jira Internal Directory" (id `1`), not the actual LDAP/AD
-directory that would ever need syncing (id `10000` here). Directory order in the list isn't
-guaranteed to put the external directory first.
+Jira has no supported way to manually trigger a directory sync on demand. Confirmed live, two
+ways, before landing on `501`:
 
-**Bug 2 — the endpoint doesn't work on Jira at all, even with the correct ID.** Confirmed
-live: `POST /rest/crowd/latest/directory/10000/synchronise` (the *correct*, LDAP directory
-ID, not directory `1`) still returns `404 {"message":"null for uri: .../directory/10000/
-synchronise","status-code":404}`. This is the identical finding already documented for
-Bitbucket and Confluence (`app/v1/bitbucket/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`) — same
-underlying Atlassian Crowd-embedded module, same missing REST trigger, now independently
-confirmed on Jira too rather than just assumed-by-analogy. `sync_user_directory` currently
-still attempts the call and surfaces a raw upstream `404` as a `"Failed"` response instead of
-the clean `501` Bitbucket/Confluence use for the identical situation — not yet aligned to that
-pattern as of this writing.
+1. The old code picked `directories[0]`, which on a real instance is the built-in "Jira
+   Internal Directory" (id `1`), not the actual LDAP/AD directory that would ever need syncing
+   (id `10000` here) — directory order in the list isn't guaranteed to put the external one
+   first, so this was already picking the wrong directory.
+2. Even against the *correct* directory id, `POST /rest/crowd/latest/directory/10000/
+   synchronise` still 404s: `{"message":"null for uri: .../directory/10000/synchronise",
+   "status-code":404}`.
 
-```
-POST /rest/crowd/latest/directory/{id}/synchronise
-Header: Accept: application/json
-→ 404 on this instance, regardless of which directory id is used
-```
+This is the identical finding already documented for Bitbucket and Confluence
+(`app/v1/bitbucket/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`) — same underlying Atlassian
+Crowd-embedded module, same missing REST trigger, now independently confirmed on Jira too
+rather than just assumed-by-analogy. `sync_user_directory` therefore raises
+`HTTPException(501, ...)` unconditionally, without calling Jira at all, matching the pattern
+used by the other two modules for the identical situation.
 
 ## Schema — `ProjectSpec`
 

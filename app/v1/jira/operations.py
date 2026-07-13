@@ -76,14 +76,16 @@ async def list_user_directories(jira_client: Any) -> list[dict]:
 
 
 async def sync_user_directory(jira_client: Any) -> None:
-    directories = await list_user_directories(jira_client)
-    if not directories:
-        raise HTTPException(status_code=404, detail="No user directories found in Jira")
-    directory_id = directories[0]["links"][0]["href"].rstrip("/").rsplit("/", 1)[-1]
-    endpoint = f"{config.JIRA_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
-    try:
-        response = await jira_client.post(endpoint, headers={"Accept": "application/json"})
-        _handle_response(response)
-    except Exception as e:
-        logger.error(f"Unexpected error syncing user directory {directory_id}: {str(e)}")
-        raise
+    # Jira has no supported way to manually trigger a directory sync on demand — confirmed
+    # live against a real LDAP-connected directory: POST /rest/crowd/latest/directory/{id}/
+    # synchronise 404s even with the *correct* directory id (not just id 1, the wrong,
+    # internal-directory id this code used to pick first). Same underlying Atlassian
+    # Crowd-embedded module, same missing REST trigger as Bitbucket and Confluence — see
+    # app/v1/bitbucket/CLAUDE.md for the full investigation. Directories sync on Jira's own
+    # automatic schedule; there is no reliable programmatic way to force one on demand.
+    raise HTTPException(
+        status_code=501,
+        detail="Jira has no supported API to trigger a user directory sync on demand. "
+        "Directories sync on Jira's own automatic schedule; use the admin UI to check "
+        "status, not this endpoint to force one.",
+    )

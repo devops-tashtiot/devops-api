@@ -160,12 +160,10 @@ def test_list_user_directories(jira, api):
 
 
 @pytest.mark.integration
-def test_sync_user_directory_currently_fails(api):
-    # KNOWN BUG (see app/v1/jira/CLAUDE.md) — sync_user_directory picks directories[0] (Jira's
-    # built-in internal directory, not the real LDAP one) and, independently of that, Jira's
-    # /synchronise endpoint 404s even against the correct directory id. This characterizes
-    # today's actual (broken) behavior; update this test once the endpoint is aligned to the
-    # 501 "unsupported" pattern Bitbucket/Confluence already use for the identical situation.
+def test_sync_user_directory_returns_not_supported(api):
+    # Jira has no supported REST API to trigger a directory sync on demand — confirmed live:
+    # POST /rest/crowd/latest/directory/{id}/synchronise 404s even with the correct LDAP
+    # directory id (see app/v1/jira/CLAUDE.md). Must return 501, never a false "successful".
     r = api.post(f"{PREFIX}/user-dirs/sync")
-    assert r.status_code == 404, r.text
+    assert r.status_code == 501, r.text
     assert r.json()["status"] == "Failed"
