@@ -59,42 +59,56 @@ argocd test suite (56 tests) has never actually run, in CI or otherwise. Confirm
 `global_config.ARGOCD_ALLOWED_SIZES` / `global_config.ARGOCD_ALLOWED_RESOURCES` (matching how
 `VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]` already did it correctly in both files).
 
-### Known live blocker — consumer-config routes (`POST /`, `DELETE /{env}/{name}`)
+### Consumer-config routes (`POST /`, `DELETE /{env}/{name}`)
 
-Same root causes as `app/v1/sonarqube/CLAUDE.md`'s "Known live blockers" section, since both
-modules share the same `Git` connector pattern:
-1. The `argocd` repo slug (`ARGOCD_AAS_REPO_SLUG`) did not exist under Bitbucket project `ARGO`
-   — `tests/v1/argocd/test_argocd_e2e.py`'s setup fixture now creates it idempotently (never
-   torn down), same pattern as the sonarqube consumer e2e test.
-2. No SSH key is mounted in the devops-api pod at all (`GIT_SSH_KEY_PATH` points nowhere).
-3. The pinned `tashtiot-apis-library` wheel predates a hostname-parsing fix already present in
-   its own source (produces `ssh://git@http::7995/...` instead of the real Bitbucket host).
+**2026-07-13 findings (now stale, kept for history):** repo slug missing under `ARGO`, no SSH
+key mounted, and a hostname-parsing bug in the pinned `tashtiot-apis-library` wheel (`ssh://git@
+http::7995/...`).
 
-`test_argocd_e2e.py`'s consumer-config tests are written correctly and will pass once (2) and
-(3) above are resolved — confirmed live today they fail with the identical `ssh: Could not
-resolve hostname http::7995` error seen in the sonarqube module.
+**2026-07-14 update:** (1) is fixed — the `ARGO/argocd` repo now exists, seeded by mirroring
+`github.com/devops-tashtiot/argocd` directly via Bitbucket's in-cluster ClusterIP/`bitbucket-0`
+pod (bypassing Cloudflare Access, which was interfering with git smart-HTTP through the public
+hostname). Its default branch was converted from `main` to `master` to match
+`ARGOCD_GITOPS_DEFAULT_BRANCH`.
 
-### Known live blocker — cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
+With the repo in place, live-testing `POST /` now hits a **different, previously-unseen error**
+that supersedes (2)/(3) above — the Git connector isn't attempting SSH at all in the live
+deployment, it's using Bearer-token HTTP auth, and `GIT_TOKEN` is deployed as `""` (see
+`devtools-definition/devtools/devops-api/values.yaml`'s `GIT_TOKEN: "" # set out-of-band, not
+committed to git`). This produces `httpx.InvalidHeader: Illegal header value b'Bearer '` — the
+empty string is passed straight into the `Authorization` header. **Still blocked** — needs a
+real `GIT_TOKEN` provisioned out-of-band (the (2)/(3) SSH-path findings above are moot until/
+unless the connector is reconfigured to use SSH instead of the token path).
 
-`_build_argocd()` (`operations.py:50-52`) targets `https://{app_name}.argocd.{DOMAIN_SUFFIX}` —
-**no wildcard DNS record exists for `*.argocd.devopstashtiot.page`** (confirmed via
-`dig @1.1.1.1`; only the bare `argocd.devopstashtiot.page`, the platform's own management-plane
-ArgoCD, resolves). Unlike other modules (Bitbucket/Confluence/SonarQube/Jira — see
-`devtools-definition/devtools/devops-api/values.yaml`'s comment on why they use in-cluster
-Service DNS instead of the public hostname, to dodge Cloudflare Access), there is no equivalent
-in-cluster fallback or env var override for the per-consumer ArgoCD URL — it's hardcoded to the
-public hostname pattern with nothing else possible. No `app_name` value can resolve today.
+### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 
-Separately, `create_cluster_secret`/`edit_cluster_secret` also depend on
-`ARGOCD_CLUSTER_SECRET_REPO_URL` (`http://gitea-http.gitea.svc.cluster.local:3000/...` per the
-live env) as the Helm chart source for the ArgoCD `Application` they create — **no Gitea
-deployment exists anywhere in the cluster** (`kubectl get pods -A | grep -i gitea` returns
-nothing live).
+**2026-07-13 findings (now stale, kept for history):** no wildcard DNS for
+`*.argocd.devopstashtiot.page`, and `ARGOCD_CLUSTER_SECRET_REPO_URL` pointed at a Gitea
+deployment that doesn't exist in this cluster.
 
-Both are real, multi-system infra gaps (Cloudflare DNS + a missing Gitea devtool), not code bugs
-in this module — `test_argocd_e2e.py`'s cluster-secret test is skipped by default
-(`E2E_ARGOCD_CLUSTER_TOKEN` unset) since there's no way to self-provision either gap from within
-a test.
+**2026-07-14 update:** both fixed — wildcard DNS now resolves, and
+`ARGOCD_CLUSTER_SECRET_REPO_URL` now points at the `ARGO/argocd` Bitbucket repo (in-cluster DNS:
+`http://bitbucket.bitbucket.svc.cluster.local/scm/argo/argocd.git`). The repo was also made
+genuinely public (`-Dfeature.public.access=true` JVM arg on the Bitbucket deployment — public
+access is globally disabled by default since Bitbucket DC 8.18, confirmed via
+https://confluence.atlassian.com/bitbucketserver/allowing-public-access-to-code; no REST
+endpoint exists to toggle it, `/admin/permissions/anonymous` and `/admin/settings` both 404 even
+against a `SYS_ADMIN` token), so ArgoCD needs no registered repository-credential Secret at all
+for this repo.
+
+Live-testing `POST /cluster-secret` with those fixes in place surfaced a **new, previously
+unreached blocker**: `_check_cluster_permissions()` (`operations.py:12`) shells out to `kubectl
+auth can-i ...` as a subprocess, but **the `devops-api` container image does not have `kubectl`
+installed** — fails with `[Errno 2] No such file or directory: 'kubectl'`. This runs before
+`_build_argocd()`, so it's earlier in the call chain than the DNS/repo issues — meaning those
+were never actually reached in any prior live test (the cluster-secret e2e test has always been
+skipped by default, `E2E_ARGOCD_CLUSTER_TOKEN` unset). **Still blocked** — needs `kubectl`
+added to the devops-api Docker image, or `_check_cluster_permissions` reimplemented without
+shelling out to a binary that isn't guaranteed to be present.
+
+Neither blocker above is fixable from within `test_argocd_e2e.py` itself — both need
+out-of-cluster provisioning (`GIT_TOKEN` secret; Docker image change) rather than test/gitops
+changes.
 
 ## Token validation behaviour in local dev
 
