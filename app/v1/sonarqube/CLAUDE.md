@@ -11,6 +11,26 @@ https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}
 Auth always uses the global credentials from `.env` (`SONARQUBE_USERNAME` / `SONARQUBE_PASSWORD`).  
 `main.py` therefore calls `get_v1_sonarqube_router()` with no arguments.
 
+### Correction (2026-07-13) — group create/delete is currently broken live too
+
+The earlier live-check pass on this module (see git history) reported group create/delete as
+"already covered, working" based on the pre-existing `test_sonarqube_group_e2e.py` file
+existing — **that test was never actually re-executed against the live cluster in that pass**,
+only read as a reference pattern. Investigating the ArgoCD module surfaced the same class of
+bug here: `_build_client(consumer_name)` builds `https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}`,
+but **no wildcard DNS record exists** for `*.sonarqube.devopstashtiot.page` — only the bare
+`sonarqube.devopstashtiot.page` resolves (confirmed via `dig @1.1.1.1`). Live-checked directly:
+`POST /api/devops/v1/sonarqube/` with `consumer_name: "netanel"` (the test's own fixture value)
+returns `500 Internal Server Error` — the DNS lookup fails inside the SonarQube client's first
+HTTP call, which isn't an `HTTPException` so it isn't caught and formatted by the route's
+`except HTTPException` handler, surfacing as a bare 500 instead.
+
+This is the same root cause documented in `app/v1/argocd/CLAUDE.md` (`_build_argocd` has the
+identical hostname pattern and the identical gap) — a wildcard DNS record (and possibly a
+matching Ingress rule) for per-consumer subdomains was never provisioned for either
+"-as-a-service" feature. Not a devops-api code bug; `test_sonarqube_group_e2e.py` is correct and
+will pass once the DNS gap is fixed.
+
 ## SonarQube REST API calls
 
 ### Create group — `POST /api/user_groups/create`

@@ -12,8 +12,8 @@ from app.v1.argocd.conf import config
 from app.global_conf import global_config
 
 VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
-VALID_SIZE = config.ARGOCD_ALLOWED_SIZES[0]
-VALID_RESOURCE = config.ARGOCD_ALLOWED_RESOURCES[0]
+VALID_SIZE = global_config.ARGOCD_ALLOWED_SIZES[0]
+VALID_RESOURCE = global_config.ARGOCD_ALLOWED_RESOURCES[0]
 
 VALID_CLUSTER_DATA = {
     "name": "openshift",

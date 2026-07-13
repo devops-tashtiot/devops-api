@@ -5,8 +5,8 @@ from app.global_conf import global_config
 
 PREFIX = config.API_PREFIX
 VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
-VALID_SIZE = config.ARGOCD_ALLOWED_SIZES[0]
-VALID_RESOURCE = config.ARGOCD_ALLOWED_RESOURCES[0]
+VALID_SIZE = global_config.ARGOCD_ALLOWED_SIZES[0]
+VALID_RESOURCE = global_config.ARGOCD_ALLOWED_RESOURCES[0]
 
 VALID_METADATA = {
     "project": "test-project",
@@ -75,6 +75,30 @@ def test_get_include_resources_returns_200(client):
 def test_get_include_resources_returns_nonempty_list(client):
     data = client.get(f"{PREFIX}/include-resources").json()
     assert isinstance(data, list) and len(data) > 0
+
+
+# GET /rbac-resources
+
+def test_get_rbac_resources_returns_200(client):
+    assert client.get(f"{PREFIX}/rbac-resources").status_code == 200
+
+
+def test_get_rbac_resources_returns_nonempty_list(client):
+    data = client.get(f"{PREFIX}/rbac-resources").json()
+    assert isinstance(data, list) and len(data) > 0
+    assert "applications" in data
+
+
+# GET /rbac-actions
+
+def test_get_rbac_actions_returns_200(client):
+    assert client.get(f"{PREFIX}/rbac-actions").status_code == 200
+
+
+def test_get_rbac_actions_returns_nonempty_list(client):
+    data = client.get(f"{PREFIX}/rbac-actions").json()
+    assert isinstance(data, list) and len(data) > 0
+    assert "get" in data
 
 
 # GET /environments
