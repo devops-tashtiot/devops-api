@@ -46,23 +46,6 @@ def get_v1_sonarqube_router(git: Git):
         except:
             await delete_group(client, payload.spec)
 
-    @router.delete("/{consumer_name}/{name}", name="delete sonarqube group", status_code=200)
-    async def delete_existing_group(consumer_name: str, name: str) -> JSONResponse:
-        stub = GroupSpec(consumer_name=consumer_name, name=name)
-        client = _build_client(consumer_name)
-        try:
-            await delete_group(client, stub)
-            return SuccessResponse(status="successful")
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception in SonarQube. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
-            )
-
     @router.post("/consumer/", name="create sonarqube consumer config", status_code=200)
     async def create_consumer(payload: SonarQubeConsumerRequest) -> JSONResponse:
         try:
@@ -97,6 +80,26 @@ def get_v1_sonarqube_router(git: Git):
     async def delete_consumer(name: str) -> JSONResponse:
         try:
             await delete_sonarqube_consumer(git, name)
+            return SuccessResponse(status="successful")
+        except HTTPException as external_error:
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in SonarQube. {external_error.detail}",
+                    status="Failed",
+                    status_code=external_error.status_code,
+                ).dict(),
+                status_code=external_error.status_code,
+            )
+
+    # Registered last: this generic two-segment wildcard would otherwise shadow
+    # DELETE /consumer/{name} above, since Starlette matches routes in registration order
+    # and both patterns fit the same "/consumer/<x>" shape (confirmed live — see CLAUDE.md).
+    @router.delete("/{consumer_name}/{name}", name="delete sonarqube group", status_code=200)
+    async def delete_existing_group(consumer_name: str, name: str) -> JSONResponse:
+        stub = GroupSpec(consumer_name=consumer_name, name=name)
+        client = _build_client(consumer_name)
+        try:
+            await delete_group(client, stub)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
