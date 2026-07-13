@@ -101,6 +101,15 @@ have its group deleted via `DELETE /{consumer_name}/{name}` — that request wil
 Considered out of scope to redesign the URL scheme for; treat `consumer` as a reserved
 `consumer_name`.
 
+### Fixed bug — missing `openssh-client` in the Docker image broke every Git-connector route
+
+Live-checked after fixing the route-shadowing bug above: all three `/consumer/*` routes still
+failed with `ssh: not found` — `GitClient` shells out to `git clone ssh://...` (not the REST
+content API), and the devops-api `Dockerfile` only installed `git` via apt, never
+`openssh-client`. This affected every module using the `Git` connector over SSH (also
+`argocd`), not just SonarQube. **Fixed** by adding `openssh-client` to the Dockerfile's
+`apt-get install` line.
+
 ### Live environment note — GitOps repo did not exist
 
 Live-checked directly against the real Bitbucket instance (2026-07-13): the configured
