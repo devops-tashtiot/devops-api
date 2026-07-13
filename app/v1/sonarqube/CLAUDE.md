@@ -122,6 +122,37 @@ fixture now creates the project/repo idempotently if missing (and leaves them in
 are shared platform infrastructure, not disposable test fixtures) as a side effect of adding e2e
 coverage.
 
+### Known live blockers — NOT fixed, out of scope for this module (2026-07-13)
+
+Even after the route-shadowing fix and the `openssh-client` Dockerfile fix above, all three
+`/consumer/*` routes **still fail live** for two further reasons, both outside `devops-api`'s
+own repo:
+
+1. **No SSH key is mounted in the pod at all.** `GIT_SSH_KEY_PATH=/root/.ssh/id_ed25519`
+   (`devtools-definition/devtools/devops-api/values.yaml`) points at a path with no backing
+   Secret/volumeMount anywhere in the chart — confirmed live: `Identity file
+   /root/.ssh/id_ed25519 not accessible: No such file or directory`. A real SSH keypair needs
+   generating, the public key registered against the `sonarqube-as-a-service` repo (or the
+   `svc-devops-tashtiot` account) in Bitbucket, the private key mounted as a k8s Secret (this
+   platform uses external-secrets-operator for this pattern elsewhere), and a volumeMount added
+   to the devops-api chart.
+2. **The pinned `tashtiot-apis-library` wheel is stale relative to its own source.** The
+   library's `GitClient.__init__` (`connectors/git/client.py:104-110`, local checkout at
+   `~/devops/tashtiot-apis/apis-library`) already has a comment describing and fixing exactly
+   this bug — stripping `http://` before deriving `ssh_host` so it doesn't become the literal
+   string `"http"` — but `devops-api/requirements.txt` pins
+   `tashtiot-apis-library @ https://github.com/Platform-Infra-Org/apis-library/releases/download/0.1.0/...whl`,
+   an **immutable GitHub release asset** for tag `0.1.0` that predates this fix (same version
+   number was never bumped after the fix was written, so the fixed source and the published
+   wheel share a tag but not content). Confirmed live: `ssh://git@http::7995/...` — literal
+   `"http"` as hostname. Fixing this needs a new tagged release of `apis-library` with a real
+   wheel upload, then bumping `devops-api/requirements.txt` to that new tag.
+
+Both are real, multi-repo infrastructure/release gaps, not bugs in this module's own code — left
+undone pending an explicit decision on scope. `test_sonarqube_consumer_e2e.py` is written
+correctly against the intended behavior and will pass once both are resolved; today it fails
+live at the `POST`/`PUT`/`DELETE /consumer/*` steps for the reasons above.
+
 ## Config fields (`conf.py`)
 
 | Field | Default | Description |
