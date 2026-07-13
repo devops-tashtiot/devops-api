@@ -24,6 +24,13 @@ PROJECT_NAME = "e2etest"
 # BITBUCKET_USER itself often won't match (e.g. "svc-devops-tashtiot"), so this needs its
 # own override rather than reusing BITBUCKET_USER.
 ADMIN_USER = os.environ.get("E2E_ADMIN_USER", "nati")
+# Must be a group that already exists in Bitbucket (this suite never creates one) and match
+# admin_group's schema pattern ^[a-zA-Z0-9_\-]+$ (no spaces) — most built-in AD groups
+# (e.g. "Domain Users") fail that pattern, so this needs an explicit, repo-safe default.
+ADMIN_GROUP = os.environ.get("E2E_ADMIN_GROUP", "devops-tashtiot")
+
+REPO_PROJECT_KEY = os.environ.get("E2E_REPO_PROJECT_KEY", "E2EREPOTEST")
+REPO_SLUG = "e2e-test-repo"
 
 REQUEST_METADATA = {
     "project": "devops-api-e2e",
@@ -67,6 +74,19 @@ def _get_project_user_permission(bb: httpx.Client, key: str, username: str) -> s
     return None
 
 
+def _get_project_group_permission(bb: httpx.Client, key: str, group_name: str) -> str | None:
+    r = bb.get(f"/rest/api/latest/projects/{key}/permissions/groups")
+    assert r.status_code == 200
+    for entry in r.json().get("values", []):
+        if entry["group"]["name"] == group_name:
+            return entry["permission"]
+    return None
+
+
+def _repo_exists(bb: httpx.Client, key: str, repo_slug: str) -> bool:
+    return bb.get(f"/rest/api/latest/projects/{key}/repos/{repo_slug}").status_code == 200
+
+
 @pytest.mark.integration
 def test_create_assign_and_delete_project(bb, api):
     # --- clean state ---
@@ -101,6 +121,78 @@ def test_create_assign_and_delete_project(bb, api):
 
     # --- verify project is gone ---
     assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
+def test_create_assign_group_and_delete_project(bb, api):
+    # --- clean state ---
+    _delete_project_if_exists(bb, PROJECT_KEY)
+    assert not _project_exists(bb, PROJECT_KEY)
+
+    # --- create project via our API with admin_group instead of admin_user ---
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "End-to-end test project (group admin)",
+            "public": False,
+            "admin_group": ADMIN_GROUP,
+        },
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"
+
+    assert _project_exists(bb, PROJECT_KEY)
+
+    permission = _get_project_group_permission(bb, PROJECT_KEY, ADMIN_GROUP)
+    assert permission == "PROJECT_ADMIN", f"Expected PROJECT_ADMIN, got {permission}"
+
+    # --- delete project via our API ---
+    r = api.delete(f"{PREFIX}/{PROJECT_KEY}")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"
+
+    assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
+def test_delete_project_cascades_repo_deletion(bb, api):
+    # Bitbucket refuses DELETE /projects/{key} with 409 IntegrityException whenever the
+    # project still has a repo inside it (confirmed live — see app/v1/bitbucket/CLAUDE.md).
+    # delete_project must delete every repo under the project first so this endpoint can
+    # actually delete a real, populated project rather than only ever an empty one.
+    _delete_project_if_exists(bb, REPO_PROJECT_KEY)
+    assert not _project_exists(bb, REPO_PROJECT_KEY)
+
+    # --- create project via our API ---
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": REPO_PROJECT_KEY,
+            "name": REPO_PROJECT_KEY.lower(),
+            "description": "End-to-end test project with a repo",
+            "public": False,
+            "admin_user": ADMIN_USER,
+        },
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"
+
+    # --- create a repo inside it directly against Bitbucket (devops-api has no repo-create
+    #     route — repos here stand in for ones created by other means, e.g. Bitbucket's own UI) ---
+    r = bb.post(f"/rest/api/latest/projects/{REPO_PROJECT_KEY}/repos", json={"name": REPO_SLUG, "scmId": "git"})
+    assert r.status_code == 201, r.text
+    assert _repo_exists(bb, REPO_PROJECT_KEY, REPO_SLUG)
+
+    # --- delete the project via our API — must cascade-delete the repo instead of 409ing ---
+    r = api.delete(f"{PREFIX}/{REPO_PROJECT_KEY}")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"
+
+    # --- verify both the repo and the project are actually gone ---
+    assert not _repo_exists(bb, REPO_PROJECT_KEY, REPO_SLUG)
+    assert not _project_exists(bb, REPO_PROJECT_KEY)
 
 
 @pytest.mark.integration
