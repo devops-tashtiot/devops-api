@@ -223,6 +223,44 @@ None of the fixes above were reachable or fixable purely from within `test_argoc
 needed out-of-cluster provisioning (`GIT_TOKEN` secret, Docker image change, library API
 correction, CoreDNS rewrite) rather than test/gitops changes alone.
 
+**🛑 UNRESOLVED — `create_cluster_secret()` cannot work at all against the real library.** With
+every fix above in place (kubectl, token-based `_build_argocd()`, DNS/TLS routing all confirmed
+live), `POST /cluster-secret` reaches a **third, deeper** version of the same underlying problem:
+`create_cluster_secret()` (`operations.py`) builds a full ArgoCD `Application` manifest and calls
+`argocd.create_app(app_body, validate=False)` — **`create_app` does not exist on the real
+`ArgoCD` class either.** Confirmed live: `'ArgoCD' object has no attribute 'create_app'`.
+
+This is not a simple rename like `from_credentials` → the real constructor was. The **complete**
+public method list on the real `ArgoCD` class is:
+```
+add_namespace_to_cluster_secret, get_app_parameters, get_app_status, get_app_values,
+modify_parameters, modify_values, sync, wait_for_app_creation, wait_for_app_deletion,
+wait_for_update
+```
+There is no `create_app`, no `delete_app` — nothing that creates or deletes an Application from
+scratch. Reading the actual source of the two closest candidates confirms neither can substitute:
+- `modify_parameters()` calls `self.client.patch_app(...)` — a **PATCH**, i.e. it updates an
+  Application that must already exist.
+- `add_namespace_to_cluster_secret()` starts by calling `get_app_parameters()` →
+  `self.client.get_app(app_name)` — which 404s if the Application doesn't exist yet.
+
+So **every** real method on this class assumes the cluster-secret `Application` was already
+created by some other mechanism before `devops-api` ever touches it. What that mechanism is
+supposed to be is unknown — possibly an ArgoCD `ApplicationSet`/generator watching the GitOps
+repo (mirroring how `create_consumer_config` just writes a YAML file to git and lets ArgoCD's
+own automation create the real resources, rather than calling a live API), but that's
+speculation, not confirmed by anything in this codebase or library.
+
+**Do not attempt to patch this by dropping to the low-level `ArgoCDClient`** (e.g. a raw "create
+Application" call) — that violates this repo's own "never import/instantiate `*Client` classes
+directly" rule (see top-level `CLAUDE.md`) and would be inventing behavior on top of an already
+speculative design, not fixing a known-good one. `edit_cluster_secret()` (uses
+`modify_parameters`, real) and `delete_cluster_secret()` (uses `argocd.delete_app`, **also fake**
+— same problem, not yet live-tested) are in the same boat. Whoever picks this up next needs to
+either find/confirm the actual intended creation mechanism, or get a real `create_app` added to
+`tashtiot-apis-library` upstream, before `POST /cluster-secret` can ever succeed — no amount of
+config, DNS, or auth fixing (all of which are now genuinely done) gets around this.
+
 ## Token validation behaviour in local dev
 
 `_check_cluster_permissions` in `operations.py` validates each cluster token by running `kubectl auth can-i "*" "*"` against the target cluster. It raises a 401 only when kubectl writes to **stderr** (unreachable server, TLS failure, or auth rejection).
