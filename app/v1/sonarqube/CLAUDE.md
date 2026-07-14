@@ -149,14 +149,46 @@ exact same key/mount serving both modules.
 **Re-verified live — `DELETE /consumer/{name}` (via `test_create_consumer_config_default_size_omits_size_key`)
 passes.** Fully fixed, confirmed.
 
-**New, separate, unrelated finding from the same test run:** `test_create_update_delete_consumer_config_full_flow`
-fails on `PUT /consumer/{name}` — not DELETE, not SSH-related, not the `git.update_file`→
-`git.modify_file` typo (already fixed) — with `406 Not Acceptable` from Bitbucket itself
-(`"Exception in SonarQube. Bitbucket error: 406"`). CREATE and the raw-Bitbucket content
-verification both pass fine in the same test, so this is specific to whatever the update path
-sends. Not yet investigated — worth checking what `git.modify_file`'s request looks like on the
-real Bitbucket REST API (a missing/wrong `Accept`/`Content-Type` header is the classic cause of a
-Bitbucket 406) before assuming it's the same class of bug as anything above.
+### Root-caused (2026-07-14) — `PUT /consumer/{name}` 406s: `apis-library`'s raw-content fetch hits the wrong Bitbucket endpoint
+
+`test_create_update_delete_consumer_config_full_flow` fails on `PUT /consumer/{name}` — not
+DELETE, not SSH-related, not the `git.update_file`→`git.modify_file` typo (already fixed) — with
+`406 Not Acceptable` from Bitbucket itself (`"Exception in SonarQube. Bitbucket error: 406"`).
+CREATE and the raw-Bitbucket content verification both pass fine in the same test.
+
+Root cause is entirely inside `tashtiot_apis_library`, not this module's code.
+`GitClient.get_file()` fetches raw file content via
+`GET .../browse/{path}?raw=1` with an `Accept: application/octet-stream` header. Confirmed live
+against the real Bitbucket Server instance, independent of devops-api's own code/auth/ingress
+(reproduced hitting `bitbucket-0`'s pod directly):
+
+```
+GET .../browse/{path}?at=master&raw=1   Accept: application/octet-stream   ->  406 Not Acceptable
+GET .../browse/{path}?at=master&raw=1   Accept: application/json           ->  200, but {"lines":[...]} JSON, not raw bytes
+GET .../raw/{path}?at=master            Accept: application/octet-stream   ->  200, literal raw bytes
+```
+
+Bitbucket Server's `browse` endpoint **ignores `raw=1` entirely** (always returns its normal
+JSON-wrapped-lines representation) and does real content negotiation there, so a non-JSON
+`Accept` header 406s. The dedicated `raw/{path}` endpoint is the correct way to fetch literal
+bytes and has no such quirk.
+
+This only breaks the **update** path, not create: both `add_file()` and `modify_file()` call
+`get_file()` as a precondition check first. For create, the file doesn't exist yet, so the
+*metadata* GET (the first of `get_file()`'s two calls) already 404s — execution never reaches
+the broken raw-content call. For update, the file already exists, so the metadata GET succeeds
+and execution *does* reach the broken raw-content call, which 406s.
+
+**Real fix (upstream)**: opened
+[`Platform-Infra-Org/apis-library#13`](https://github.com/Platform-Infra-Org/apis-library/pull/13)
+— changes `get_file()` to fetch content from `raw/{path}` instead of `browse/{path}?raw=1`. All
+196 pre-existing tests + 2 new regression tests pass, `ruff` clean.
+**STATUS: PR OPEN, NOT YET MERGED.**
+
+**No workaround exists on devops-api's side** — `Git`/`GitClient` internals are off-limits per
+this repo's connector-usage rule, so `PUT /consumer/{name}` remains genuinely broken live until
+the library fix is merged, released, and `devops-api/requirements.txt` is bumped to it. Tracked
+in [`devops-api#6`](https://github.com/devops-tashtiot/devops-api/issues/6).
 
 ### Fixed bug — `DELETE /consumer/{name}` was unreachable (route-shadowing)
 
