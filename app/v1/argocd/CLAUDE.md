@@ -95,6 +95,14 @@ working SSH key at `GIT_SSH_KEY_PATH` and get the hostname-parsing bug patched u
 the Bearer-token HTTP path like `add_file` does. Don't assume this route works just because
 create does — they are two different code paths in the vendored library.
 
+**Worth re-checking on the next `tashtiot-apis-library` bump.** Per the original 2026-07-13
+finding, the fix for this exact hostname-parsing bug is *already present in the library's own
+source* — the pinned `0.1.0` wheel simply predates it. So this isn't a "maybe someday" fix like
+the `create_app` gap above — it's a fix that's believed to already exist upstream, just not in
+the version currently pinned in `requirements.txt`. Bumping the pin and re-testing `DELETE
+/{env}/{name}` live should be the first thing tried before touching `GIT_SSH_KEY_PATH` or any
+other workaround.
+
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 
 **2026-07-13 findings (now stale, kept for history):** no wildcard DNS for
