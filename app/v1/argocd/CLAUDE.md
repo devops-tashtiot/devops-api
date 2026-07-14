@@ -167,9 +167,20 @@ stored the private half in SSM (`/devtools/bitbucket/git-ssh-private-key`), and 
 `devtools-definition`'s `extraSecretMounts` (mounted as a file, not exposed as the primary means
 of consumption — see that repo's values.yaml comment for the minor caveat that it does also land
 as a plain env var via the same Secret's `envFrom`, accepted rather than standing up a second
-ExternalSecret just to avoid it). Not yet re-verified live after this specific change landed —
-whoever picks this up next should re-run `test_create_delete_consumer_config_full_flow` to confirm
-`DELETE /{env}/{name}` returns `200`, not just that the SSH error changed shape.
+ExternalSecret just to avoid it).
+
+**2026-07-14, re-verified live end-to-end — `DELETE /{env}/{name}` genuinely works now.** First
+retest after mounting the key still failed, differently: `Load key "/root/.ssh/id_ed25519": error
+in libcrypto`. Root cause: the private key was stored in SSM via `aws ssm put-parameter --value
+"$(cat id_ed25519)"` — bash's `$(...)` command substitution strips trailing newlines, silently
+dropping the newline `ssh-keygen` writes after `-----END OPENSSH PRIVATE KEY-----`, which OpenSSH's
+key parser requires. Confirmed via `aws ssm get-parameter --output json` (the only output mode that
+doesn't itself re-add a trailing newline, unlike `--output text`) that the stored value was missing
+it. Fixed by rewriting the SSM parameter with the newline restored, forcing the `ExternalSecret`'s
+refresh (`kubectl annotate externalsecret ... force-sync=$(date +%s)` — it doesn't re-poll SSM
+otherwise until its `refreshInterval: 1h` elapses), and restarting the deployment. Reran
+`test_create_delete_consumer_config_full_flow` against the live API: **passes.** `DELETE /{env}/{name}`
+is fixed, fully, confirmed live — not just "the error changed shape" this time.
 
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 

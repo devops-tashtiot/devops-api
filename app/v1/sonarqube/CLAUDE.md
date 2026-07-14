@@ -141,9 +141,22 @@ adding an `ssh_port` override to the library itself.
 from a hang to an immediate `Permission denied (publickey)` — no SSH key was ever actually mounted
 into the pod (`GIT_SSH_KEY_PATH` was configured but pointed at nothing). Fixed by generating a
 keypair, registering it with Bitbucket, and mounting it via `devtools-definition`'s
-`extraSecretMounts` — full details in `app/v1/argocd/CLAUDE.md`'s matching entry, since it's the
-exact same key/mount serving both modules. Not yet re-verified live after this specific change —
-re-run this module's own DELETE test too before assuming it's fully closed.
+`extraSecretMounts` — full details in `app/v1/argocd/CLAUDE.md`'s matching entry (including a
+second bug found along the way: the private key was stored in SSM missing its trailing newline,
+which OpenSSH's parser requires — `error in libcrypto` until that was fixed too), since it's the
+exact same key/mount serving both modules.
+
+**Re-verified live — `DELETE /consumer/{name}` (via `test_create_consumer_config_default_size_omits_size_key`)
+passes.** Fully fixed, confirmed.
+
+**New, separate, unrelated finding from the same test run:** `test_create_update_delete_consumer_config_full_flow`
+fails on `PUT /consumer/{name}` — not DELETE, not SSH-related, not the `git.update_file`→
+`git.modify_file` typo (already fixed) — with `406 Not Acceptable` from Bitbucket itself
+(`"Exception in SonarQube. Bitbucket error: 406"`). CREATE and the raw-Bitbucket content
+verification both pass fine in the same test, so this is specific to whatever the update path
+sends. Not yet investigated — worth checking what `git.modify_file`'s request looks like on the
+real Bitbucket REST API (a missing/wrong `Accept`/`Content-Type` header is the classic cause of a
+Bitbucket 406) before assuming it's the same class of bug as anything above.
 
 ### Fixed bug — `DELETE /consumer/{name}` was unreachable (route-shadowing)
 
