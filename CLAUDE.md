@@ -89,6 +89,42 @@ unauthenticated in-cluster access were confirmed) — if something *does* call d
 programmatically and breaks after this, it needs a real token via the `client_credentials` grant
 against the Keycloak client scope above, not a revert of this setting.
 
+**Verified end-to-end live** (2026-07-14): no-token → `401`; a real Keycloak-issued token (via
+`client_credentials` against a temporary test client granted the `devops-api-audience` scope,
+deleted after) → `200` with real route data; `/docs`/`/openapi.json` stay open. Two real gotchas
+hit along the way, both fixed, worth knowing before touching this again:
+
+1. **`AUTH_OIDC_ISSUER` must be the real public `https://rhbk.devopstashtiot.page/realms/devtools`
+   hostname — not what you get by querying Keycloak's ClusterIP directly.** Decoding a token
+   fetched via `rhbk-service.rhbk.svc.cluster.local:8080` directly (bypassing ingress-nginx)
+   showed `iss: http://rhbk.devopstashtiot.page:8080/...` — Keycloak's own hostname resolution
+   falling back to its internal scheme+port with no `X-Forwarded-Proto` to trust. That's an
+   artifact of skipping the proxy, not what any real caller receives; fetching a token through
+   the actual public hostname (matching how `argocd`/`sonarqube` are already configured) gives
+   back the correct `https://` issuer. Don't "fix" `AUTH_OIDC_ISSUER` to the `http://...:8080`
+   form based on a ClusterIP-direct test — verify through the real ingress path.
+2. **`rhbk.devopstashtiot.page` had no CoreDNS rewrite rule** (see the argocd module's CLAUDE.md
+   for the full rewrite-workaround background) — the one tool on this domain without one. This
+   meant devops-api's own outbound JWKS-fetch call (needed on every request to verify a token's
+   signature, not just at startup — OIDC discovery succeeds at startup regardless, so a clean
+   startup log does *not* mean JWKS fetching will work) went out through real Cloudflare DNS and
+   hit Access's email-OTP wall: `JWKS key resolution failed: ... HTTP Error 403: Forbidden`,
+   surfaced as every request 401ing with "Unable to verify token" even with a valid token. Fixed
+   by adding `rhbk.devopstashtiot.page` to the `kube-system/coredns` ConfigMap's rewrite rules
+   (same pattern as the other six, routed through `ingress-nginx-controller` for the real
+   Cloudflare Origin Cert) — applied directly via `kubectl`, not tracked in any GitOps repo, same
+   as the rest of that ConfigMap.
+
+**Also worth knowing:** devops-api's env vars are injected via `envFrom: configMapRef` (the
+`devops-api-env` ConfigMap), not inline `env:` entries. Kubernetes does **not** restart pods when
+a referenced ConfigMap's contents change — after any `devtools-definition` env-value change
+(including `AUTH_*`), the already-running pod keeps using whatever it read at its own startup
+until something restarts it. ArgoCD syncing the ConfigMap is not enough by itself; either wait for
+the next `image.tag` bump (which does force a new pod via the image change) or run `kubectl
+rollout restart deployment/devops-api -n devops-api` manually. Learned this the hard way
+verifying the fix above — the ConfigMap had the corrected value while the running pod still
+rejected every token with the stale one.
+
 **Tests** — `tests/v1/` and `tests/v2/` mirror the app structure. Fixtures (client, mock clients, sample payloads) live in `conftest.py` files at each level. `pytest.ini` sets `pythonpath = .` so imports start from the repo root.
 
 **CI** — GitHub Actions, `.github/workflows/docker-publish.yml`, is the *actual* active
