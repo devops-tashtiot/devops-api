@@ -178,25 +178,25 @@ live at the `POST`/`PUT`/`DELETE /consumer/*` steps for the reasons above.
 | Field | Default | Description |
 |---|---|---|
 | `SONARQUBE_ENDPOINT` | `/api` | SonarQube Web API base path |
-| `SONARQUBE_SCHEME` | `https` | URL scheme (`http` for local dev) |
-| `SONARQUBE_PORT` | `""` | Port (empty = scheme default; `9000` for local dev) |
 | `SONARQUBE_ADMIN_TEMPLATE_NAME` | `Default template` | Permission template name |
 | `SONARQUBE_GLOBAL_PERMISSIONS` | see above | Overridable via `.env` |
 | `SONARQUBE_TEMPLATE_PERMISSIONS` | see above | Overridable via `.env` |
 
 Global credentials (`SONARQUBE_USERNAME`, `SONARQUBE_PASSWORD`) and `DOMAIN_SUFFIX` live in `global_conf.py`.
 
+`SONARQUBE_SCHEME`/`SONARQUBE_PORT` fields existed here at one point but were removed
+(2026-07-14) — `_build_client()` (`routes.py`) hardcodes `https://{consumer_name}.sonarqube.
+{DOMAIN_SUFFIX}` and never read either field, so they had no effect regardless of what they were
+set to. Same dead-config pattern as `ARGOCD_SCHEME`/`ARGOCD_PORT` in
+`app/v1/argocd/conf.py` (also removed). If per-scheme/port overrides are ever actually needed
+(e.g. for local dev against `docker-compose.sonarqube.yaml`), they'd need to be wired into
+`_build_client()` itself, not just declared in `conf.py`.
+
 ## Local dev
 
 ```bash
 docker compose -f ../docker-compose.sonarqube.yaml up -d
 # SonarQube at http://localhost:9000  user: admin  pass: SonarqubeDevops1!
-```
-
-Set in `.env`:
-```
-SONARQUBE_SCHEME=http
-SONARQUBE_PORT=9000
 ```
 
 ## Testing

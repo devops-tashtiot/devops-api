@@ -26,16 +26,6 @@ class SonarqubeConfig(BaseSettings):
         description="SonarQube permission template to assign admin permissions from",
     )
 
-    SONARQUBE_SCHEME: str = Field(
-        default="https",
-        description="URL scheme for consumer SonarQube instances (use 'http' for local dev)",
-    )
-
-    SONARQUBE_PORT: str = Field(
-        default="",
-        description="Port for consumer SonarQube instances — empty means default for the scheme (use '9000' for local dev)",
-    )
-
     SONARQUBE_GLOBAL_PERMISSIONS: list[str] = Field(
         default=["admin", "gateadmin", "profileadmin", "provisioning", "scan"],
         description="Global permissions granted to new admin groups",
