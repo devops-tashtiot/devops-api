@@ -15,7 +15,11 @@ from .v1.sonarqube.routes import get_v1_sonarqube_router
 from .v1.sonarqube.conf import config as sonarqube_config
 from .v1.jira.routes import get_v1_jira_router
 def create_app() -> FastAPI:
-    app = general_create_app()
+    # enable_auth wires the library's global AuthMiddleware, which protects every route
+    # (except docs/metrics/health/probes) once AUTH_ENABLED=true and one AUTH_* verification
+    # material is also set. With AUTH_ENABLED unset/false (the default), the app boots open,
+    # same as before this flag existed. See app/v1/auth/CLAUDE.md.
+    app = general_create_app(enable_auth=True)
     
     # Configure external services objects
     if global_config.ARTIFACTORY_ENABLE_API:

@@ -63,6 +63,32 @@ The app is a FastAPI service that orchestrates DNS records, HAProxy load-balance
 
 **Connector usage rule** — always import and use the high-level service classes (`ArgoCD`, `Git`, `Vault`, `AWX`) from `tashtiot_apis_library`. Never import or instantiate the low-level `*Client` classes (e.g. `ArgoCDClient`, `GitClient`) directly — those are internal implementation details of the library. Each service class is instantiated once in `app/main.py:create_app()` and passed into router factories. See `app/v1/haproxy/operations.py` as the reference pattern for ArgoCD.
 
+**Inbound auth (`tashtiot_apis_library` >= v1.0.0)** — `app/main.py` builds the app with
+`general_create_app(enable_auth=True)`. That flag alone changes nothing: the library's
+`AuthMiddleware` (which would protect every route except `/health`, `/metrics`, `/docs`,
+`/redoc`, `/openapi.json`, `/static`, `/.well-known`, and probes) only actually activates when
+the env var `AUTH_ENABLED=true` **and** exactly one verification-material source (`AUTH_HS256_SECRET`,
+`AUTH_PUBLIC_KEY_PEM`/`AUTH_PUBLIC_KEY_PATH`, or `AUTH_JWKS_URL`/`AUTH_OIDC_ISSUER`) is also set —
+zero or more than one raises `AuthConfigError` at startup. These `AUTH_*` vars are read directly
+by the library's own internal settings object, not by this app's `global_conf.py` — there is
+nothing to wire in Python beyond the `enable_auth=True` flag itself. See `.env.example`'s
+"Inbound auth" block for the full variable list and a local-dev token recipe (`gen-auth-material`,
+a console script the library installs).
+
+This platform's real identity provider for this is Keycloak (`rhbk`, deployed via
+`clusters-provision`/`clusters-definition` — issuer `https://rhbk.devopstashtiot.page/realms/devtools`).
+A `devops-api` client + `devops-api-audience` client scope (audience mapper) exist in that realm
+for this purpose — see `clusters-provision/clusters/rhbk/CLAUDE.md` (or `values.yaml`/
+`realm-import.yaml`/`provision-oidc-clients-job.yaml` directly) for how it's provisioned, and
+`devtools-definition/devtools/devops-api/values.yaml` for the live `AUTH_*` env values actually
+deployed. **As of the last update here, `AUTH_ENABLED` is set to `true` in that live deployment**
+— every route (minus the exclude list) requires a valid Bearer token issued by that Keycloak
+realm with `aud: devops-api`. No caller of devops-api was found documented anywhere in this
+platform at the time this was enabled (only Cloudflare-Access-gated human access and
+unauthenticated in-cluster access were confirmed) — if something *does* call devops-api
+programmatically and breaks after this, it needs a real token via the `client_credentials` grant
+against the Keycloak client scope above, not a revert of this setting.
+
 **Tests** — `tests/v1/` and `tests/v2/` mirror the app structure. Fixtures (client, mock clients, sample payloads) live in `conftest.py` files at each level. `pytest.ini` sets `pythonpath = .` so imports start from the repo root.
 
 **CI** — GitHub Actions, `.github/workflows/docker-publish.yml`, is the *actual* active
