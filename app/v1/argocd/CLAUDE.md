@@ -366,6 +366,71 @@ by re-bumping the pin again on faith — if a future release's CHANGELOG.md expl
 `create_app`/`delete_app`/ArgoCD Application lifecycle methods, that's the signal to re-check; a
 version bump alone is not.
 
+## Outbound auth — migrated from a caller-supplied static token to SSO (2026-07-14)
+
+`_build_argocd()` previously took a `token: str` argument sourced straight from the request
+body (`ClusterSecretSpec.token`/`ClusterSecretUpdateSpec.token`/`ClusterSecretIdentifier.token`)
+— every caller of `POST/PUT/DELETE /cluster-secret*` had to supply a real, long-lived ArgoCD API
+token (generated once against the platform's actual ArgoCD instance, stored at
+`/devtools/argocd/api-token` in SSM for live-testing). Migrated to
+`tashtiot_apis_library.fastapi_template.security`'s outbound-SSO helpers instead —
+`_build_argocd()` is now `async` and mints its own short-lived `client_credentials` token via
+`get_sso_token_client(SSOConfig(...))`, so callers no longer supply any ArgoCD credential at
+all. The `token` field was removed from all three cluster-secret schemas.
+
+**Why not just enable service accounts on the existing `argocd` Keycloak client** (the one real
+human logins already use) **and reuse it:** tested this live first before building anything.
+Two separate problems, confirmed one at a time:
+
+1. **Audience.** A plain `client_credentials` grant against the `argocd` client (with
+   `serviceAccountsEnabled` temporarily flipped on for the test, then reverted) mints a token
+   with `aud: account` (Keycloak's built-in default) — not `aud: argocd`. ArgoCD's `oidc.config`
+   (`clientID: argocd`) validates the token's audience against exactly that, and the real API
+   call 401'd with `"invalid session: failed to verify the token"` even though `azp` correctly
+   read `argocd`. Confirmed by testing directly against `argocd-server`'s ClusterIP with a
+   minted token before building anything further.
+2. **RBAC.** ArgoCD's `policy.csv` is entirely group-based (`g, devops-tashtiot, role:admin`,
+   sourced from a real AD group's `groups` claim). A service-account token has no AD group
+   membership at all (`groups: null`) — even with the audience fixed, RBAC would still have
+   nothing to match and deny with a 403, not grant anything.
+
+**The fix — a dedicated client, not the shared browser-login one:**
+- `clusters-provision/clusters/rhbk`: new `argocdServiceClient` (`devops-api-argocd`,
+  confidential, `serviceAccountsEnabled: true`), sharing the same platform-wide OIDC client
+  secret as every other client (`sharedClientSecretSsmParameter`) — same convention as
+  `e2eTestClient`. Requests a new client scope, `devops-api-argocd-audience`, carrying two
+  protocol mappers: an Audience mapper (`aud: argocd`) and a **hardcoded** `groups` claim
+  (`["devops-api-argocd-svc"]`) — hardcoded, not the real `oidc-group-membership-mapper` the
+  `groups` scope uses elsewhere, since a service account has no real AD group membership for
+  that mapper to read.
+- `devtools-definition/devtools/argocd/values.yaml`'s `policy.csv`: a scoped-down RBAC role
+  bound to that synthetic group (`g, devops-api-argocd-svc, role:devops-api-argocd-svc`) —
+  deliberately **not** `role:admin`. Only `get`/`create`/`update`/`delete`/`sync` on
+  `applications` in the `default` project (the only project `create_cluster_secret()` ever
+  targets — its `app_body` hardcodes `"project": "default"`), matching exactly what this
+  module's code calls and nothing more.
+- `app/v1/argocd/conf.py`: new `ARGOCD_SSO_TOKEN_URL`/`ARGOCD_SSO_CLIENT_ID`/
+  `ARGOCD_SSO_CLIENT_SECRET`/`ARGOCD_SSO_SCOPE` fields. `_build_argocd()` builds one
+  module-level `SSOConfig` (reused across calls so `get_sso_token_client()`'s token cache —
+  memoized by object identity — is actually shared, not rebuilt fresh every request) and
+  fetches a token from it per call.
+- `devtools-definition/devtools/devops-api/values.yaml`: `ARGOCD_SSO_CLIENT_SECRET` sourced
+  from the same `/devtools/rhbk/oidc-client-secret` SSM parameter via the existing `vault:`
+  mechanism — one more consumer of that shared value, not a new secret.
+
+**Status: code + config written and unit-tested (mocked), not yet live-verified end-to-end.**
+The token-mint + audience + RBAC design was validated piece-by-piece live during investigation
+(see above), but the actual deployed `_build_argocd()` flow — real `devops-api-argocd` client
+existing, real `policy.csv` change applied, a real token successfully calling `get_app`/`sync`/
+`modify_parameters` — has not yet been exercised end-to-end against the live cluster. Do that
+before considering this fully done: apply the `clusters-provision`/`devtools-definition`
+changes, wait for the `ArgoCD` client scope + RBAC to actually sync, then hit `PUT
+/cluster-secret/{app_name}/{chosen_name}` (uses `modify_parameters`/`sync`, not
+`create_app`/`delete_app` — those still can't run at all until
+[`apis-library#15`](https://github.com/Platform-Infra-Org/apis-library/pull/15) merges, see the
+section above) against an Application that already exists, and confirm it actually succeeds
+rather than 401/403ing.
+
 ## Token validation behaviour in local dev
 
 `_check_cluster_permissions` in `operations.py` validates each cluster token by running `kubectl auth can-i "*" "*"` against the target cluster. It raises a 401 only when kubectl writes to **stderr** (unreachable server, TLS failure, or auth rejection).

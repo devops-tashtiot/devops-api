@@ -240,11 +240,14 @@ def test_get_environments_returns_allowed_values(api):
 # no actual per-consumer ArgoCD backend behind it: the platform's Ingress only serves the bare
 # argocd.devopstashtiot.page hostname (one real instance, one real Ingress rule), and Cloudflare
 # Access sits in front of the whole domain and would block any programmatic token-auth request
-# regardless. ARGOCD_TOKEN below authenticates fine against the real, in-cluster ArgoCD instance
-# (see /devtools/argocd/api-token in SSM) but app_name can never actually route to it — this
-# test is written against the intended per-consumer-instance behavior and will keep failing at
-# the network layer until that provisioning gap is closed; it is not a code bug in this module.
-ARGOCD_TOKEN = os.environ.get("E2E_ARGOCD_TOKEN", "")
+# regardless. devops-api's own outbound ArgoCD auth (see below) works fine against the real,
+# in-cluster ArgoCD instance but app_name can never actually route to it — this test is written
+# against the intended per-consumer-instance behavior and will keep failing at the network layer
+# until that provisioning gap is closed; it is not a code bug in this module.
+#
+# devops-api authenticates its own outbound ArgoCD calls via SSO (client_credentials against
+# clusters-provision/clusters/rhbk's argocdServiceClient) — there is no caller-supplied ArgoCD
+# API token anymore, so this test no longer needs to mint/pass one.
 ARGOCD_APP_NAME = os.environ.get("E2E_ARGOCD_APP_NAME", "netanel")
 ARGOCD_CHOSEN_NAME = os.environ.get("E2E_ARGOCD_CHOSEN_NAME", "e2e-test")
 ARGOCD_CLUSTER_TOKEN = os.environ.get("E2E_ARGOCD_CLUSTER_TOKEN", "")
@@ -253,7 +256,6 @@ ARGOCD_CLUSTER_ADDRESS = os.environ.get("E2E_ARGOCD_CLUSTER_ADDRESS", "https://k
 CLUSTER_SECRET_PAYLOAD = {
     "metadata": REQUEST_METADATA,
     "spec": {
-        "token": ARGOCD_TOKEN,
         "chosen_name": ARGOCD_CHOSEN_NAME,
         "app_name": ARGOCD_APP_NAME,
         "application_clusters": [{
@@ -271,7 +273,6 @@ CLUSTER_SECRET_PAYLOAD = {
 def test_create_update_delete_cluster_secret_full_flow(api):
     # --- clean state (ignore failure — may not exist yet) ---
     api.delete(f"{PREFIX}/cluster-secret", params={
-        "token": ARGOCD_TOKEN,
         "app_name": ARGOCD_APP_NAME, "chosen_name": ARGOCD_CHOSEN_NAME,
     })
 
@@ -284,7 +285,6 @@ def test_create_update_delete_cluster_secret_full_flow(api):
     update_payload = {
         "metadata": REQUEST_METADATA,
         "spec": {
-            "token": ARGOCD_TOKEN,
             "application_clusters": [{
                 "name": "openshift",
                 "namespace": "default,kube-system",
@@ -298,7 +298,6 @@ def test_create_update_delete_cluster_secret_full_flow(api):
 
     # --- delete it ---
     r = api.delete(f"{PREFIX}/cluster-secret", params={
-        "token": ARGOCD_TOKEN,
         "app_name": ARGOCD_APP_NAME, "chosen_name": ARGOCD_CHOSEN_NAME,
     })
     assert r.status_code == 200, r.text

@@ -104,7 +104,6 @@ class TestApplicationCluster:
 class TestClusterSecretSpec:
     def _base(self):
         return {
-            "token": "some-argocd-token",
             "chosen_name": "nati",
             "app_name": "netanel",
             "application_clusters": [VALID_CLUSTER_DATA],
@@ -113,10 +112,6 @@ class TestClusterSecretSpec:
     def test_valid_payload(self):
         spec = ClusterSecretSpec(**self._base())
         assert spec.app_name == "netanel"
-
-    def test_empty_token_raises(self):
-        with pytest.raises(ValidationError):
-            ClusterSecretSpec(**{**self._base(), "token": ""})
 
     def test_empty_application_clusters_raises(self):
         with pytest.raises(ValidationError):
@@ -138,33 +133,28 @@ class TestClusterSecretSpec:
 class TestClusterSecretUpdateSpec:
     def test_valid_payload(self):
         spec = ClusterSecretUpdateSpec(
-            token="some-argocd-token",
             application_clusters=[VALID_CLUSTER_DATA],
         )
-        assert spec.token == "some-argocd-token"
+        assert len(spec.application_clusters) == 1
 
     def test_empty_clusters_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretUpdateSpec(token="some-argocd-token", application_clusters=[])
-
-    def test_empty_token_raises(self):
-        with pytest.raises(ValidationError):
-            ClusterSecretUpdateSpec(token="", application_clusters=[VALID_CLUSTER_DATA])
+            ClusterSecretUpdateSpec(application_clusters=[])
 
 
 class TestClusterSecretIdentifier:
     def test_valid(self):
-        spec = ClusterSecretIdentifier(token="some-argocd-token", app_name="app", chosen_name="nati")
+        spec = ClusterSecretIdentifier(app_name="app", chosen_name="nati")
         assert spec.app_name == "app"
 
     def test_invalid_app_name_pattern_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(token="some-argocd-token", app_name="bad name!", chosen_name="nati")
+            ClusterSecretIdentifier(app_name="bad name!", chosen_name="nati")
 
     def test_invalid_chosen_name_pattern_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(token="some-argocd-token", app_name="app", chosen_name="bad!")
+            ClusterSecretIdentifier(app_name="app", chosen_name="bad!")
 
     def test_empty_app_name_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(token="some-argocd-token", app_name="", chosen_name="nati")
+            ClusterSecretIdentifier(app_name="", chosen_name="nati")

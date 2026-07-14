@@ -94,14 +94,15 @@ Returns the list of valid environments for this deployment.
 
 Registers one or more Kubernetes clusters as ArgoCD cluster secrets by creating (and syncing) an ArgoCD `Application` that deploys the `cluster-secret` Helm chart. Before creating the Application, each `application_clusters[]` entry's token is validated by running `kubectl auth can-i "*" "*"` against that cluster's own API server — a `401` means the token is invalid or the server is unreachable, a `403` means the token lacks admin rights.
 
+devops-api authenticates its own call to ArgoCD's API via SSO (a `client_credentials` token minted against `clusters-provision/clusters/rhbk`'s dedicated `devops-api-argocd` service-account client) — there is no ArgoCD API token in the request body; callers never supply ArgoCD credentials at all.
+
 **Request body**
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `token` | string | yes | | ArgoCD API token for the target `{app_name}` instance |
 | `chosen_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Prefix for the ArgoCD app name — final name is `{chosen_name}-cluster-secret` |
 | `app_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Consumer name — used to build the target ArgoCD instance URL `https://{app_name}.argocd.{DOMAIN_SUFFIX}` |
-| `application_clusters` | array, min 1 | yes | | Clusters to register — each has `name`, `namespace` (comma-separated for multiple), `address`, `token` |
+| `application_clusters` | array, min 1 | yes | | Clusters to register — each has `name`, `namespace` (comma-separated for multiple), `address`, `token` (that target cluster's own service-account token — unrelated to ArgoCD auth) |
 
 ---
 
@@ -109,7 +110,7 @@ Registers one or more Kubernetes clusters as ArgoCD cluster secrets by creating 
 
 Deletes the ArgoCD `Application` created by `POST /cluster-secret`.
 
-**Query parameters**: `username`, `password`, `app_name`, `chosen_name` (all required).
+**Query parameters**: `app_name`, `chosen_name` (both required).
 
 ---
 
@@ -119,7 +120,7 @@ Updates an existing cluster-secret Application's Helm parameters (replaces `appl
 
 **Path parameters**: `app_name`, `chosen_name`.
 
-**Request body**: `username`, `password`, `application_clusters` (same shape as `POST /cluster-secret`).
+**Request body**: `application_clusters` (same shape as `POST /cluster-secret`).
 
 ---
 
