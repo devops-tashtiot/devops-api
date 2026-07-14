@@ -28,8 +28,22 @@ HTTP call, which isn't an `HTTPException` so it isn't caught and formatted by th
 This is the same root cause documented in `app/v1/argocd/CLAUDE.md` (`_build_argocd` has the
 identical hostname pattern and the identical gap) — a wildcard DNS record (and possibly a
 matching Ingress rule) for per-consumer subdomains was never provisioned for either
-"-as-a-service" feature. Not a devops-api code bug; `test_sonarqube_group_e2e.py` is correct and
-will pass once the DNS gap is fixed.
+"-as-a-service" feature. Not a devops-api code bug.
+
+**Correction (2026-07-14) — `test_sonarqube_group_e2e.py` was not actually correct as-is.**
+The statement above ("will pass once the DNS gap is fixed") was wrong: the test's `POST /`
+call sent a flat `{"consumer_name": ..., "name": ...}` body, but the route's
+`payload: SonarQubeGroupRequest` is an `OperationRequest` subclass — every mutating route in
+this whole app (`bitbucket`, `confluence`, `jira`, `artifactory`, `argocd`, `sonarqube`, `dns`,
+`haproxy`, `chat`) requires the `{"metadata": {...}, "spec": {...}}` wrapper, not a flat body.
+The flat payload 422s on Pydantic validation *before* the route body (and therefore the
+DNS-dependent `_build_client` call) ever executes — confirmed live:
+`{"detail":[{"type":"missing","loc":["body","metadata"],...},{"type":"missing","loc":["body","spec"],...}]}`.
+Fixed the test to send `{"metadata": {...}, "spec": {"consumer_name": ..., "name": ...}}` (same
+shape `test_sonarqube_consumer_e2e.py` already uses). Confirmed live: the corrected payload
+clears validation and now reaches the DNS-dependent code, surfacing the *other*, still-open
+gap above (`500 Internal Server Error`) — so both issues are real and independent; fixing the
+DNS gap alone would not have been sufficient, and this test would have kept 422ing forever.
 
 ## SonarQube REST API calls
 

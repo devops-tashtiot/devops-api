@@ -13,6 +13,18 @@ ADMIN_PASS = os.environ.get("ADMIN_PASS", "SonarqubeDevops1!")
 GROUP_NAME = "e2e-admin-group"
 CONSUMER_NAME = "netanel"
 
+# POST / expects SonarQubeGroupRequest (an OperationRequest subclass) — a flat
+# {"consumer_name": ..., "name": ...} body was never valid against this schema, it needs to be
+# wrapped as {"metadata": {...}, "spec": {"consumer_name": ..., "name": ...}}, same shape every
+# other module's e2e test already sends (see test_sonarqube_consumer_e2e.py's REQUEST_METADATA).
+REQUEST_METADATA = {
+    "project": "devops-api-e2e",
+    "network": "test",
+    "region": "test",
+    "space": "test",
+    "environment": "test",
+}
+
 EXPECTED_GLOBAL_PERMISSIONS = {"admin", "gateadmin", "profileadmin", "provisioning", "scan"}
 EXPECTED_TEMPLATE_PERMISSIONS = {"user", "codeviewer", "issueadmin", "securityhotspotadmin", "admin", "scan"}
 
@@ -99,7 +111,13 @@ def test_create_and_delete_group_full_flow(sonar, api):
     assert r.json()["paging"]["total"] == 0
 
     # --- create group via our API ---
-    r = api.post(f"{PREFIX}/", json={"consumer_name": CONSUMER_NAME, "name": GROUP_NAME})
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {"consumer_name": CONSUMER_NAME, "name": GROUP_NAME},
+        },
+    )
     assert r.status_code == 200
     assert r.json()["status"] == "successful"
 
