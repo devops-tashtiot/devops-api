@@ -95,13 +95,27 @@ working SSH key at `GIT_SSH_KEY_PATH` and get the hostname-parsing bug patched u
 the Bearer-token HTTP path like `add_file` does. Don't assume this route works just because
 create does — they are two different code paths in the vendored library.
 
-**Worth re-checking on the next `tashtiot-apis-library` bump.** Per the original 2026-07-13
-finding, the fix for this exact hostname-parsing bug is *already present in the library's own
-source* — the pinned `0.1.0` wheel simply predates it. So this isn't a "maybe someday" fix like
-the `create_app` gap above — it's a fix that's believed to already exist upstream, just not in
-the version currently pinned in `requirements.txt`. Bumping the pin and re-testing `DELETE
-/{env}/{name}` live should be the first thing tried before touching `GIT_SSH_KEY_PATH` or any
-other workaround.
+**2026-07-14 re-check, now bumped to `v1.1.2` — library code is unchanged, but whether the bug still
+fires depends on config that has since changed too; needs a real live re-test, not another read of
+the source.** Diffing `0.1.0`'s `connectors/git/client.py` against `v1.1.2`'s confirms the `ssh_host`
+line itself is byte-for-byte the same logic (only a quote-style reformat):
+`self.ssh_host = f"{base_url.replace('https://', '').split('/')[0]}:7995"` — it still only strips
+`https://`, so it still mis-parses a plain `http://` `base_url` into a broken host like `http::7995`.
+
+*However*, `GIT_API_URL` (the `base_url` this constructs from) is **no longer** the `http://` value
+that produced the original `http::7995` failure. Checked git history on
+`devtools-definition/devtools/devops-api/values.yaml`: at the time of the 2026-07-13 finding it was
+`http://bitbucket.bitbucket.svc.cluster.local/rest/api/1.0`, genuinely `http`. It was since changed
+(unrelated to this bug — part of the later CoreDNS/Cloudflare-Origin-Cert work in this same file) to
+`https://bitbucket.devopstashtiot.page/rest/api/1.0`. Recomputing the exact same string operation
+with *that* value gives the **correct** `bitbucket.devopstashtiot.page:7995` — so the specific parsing
+failure may no longer reproduce, as an unintended side effect of an unrelated config change, not
+because anyone fixed this bug. **Do not mark this resolved on that basis** — the library's own logic
+is still wrong in principle (it'll break again for any future `http://` `GIT_API_URL`), and whether
+port `7995` (Bitbucket SSH) is even reachable through the Cloudflare Tunnel from in-cluster is a
+separate, unverified question — `bitbucket.devopstashtiot.page` is only confirmed reachable on 443
+elsewhere in this file. The only way to actually know if `DELETE /{env}/{name}` works now is a real
+live test, not source-reading or arithmetic.
 
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 
@@ -269,14 +283,23 @@ either find/confirm the actual intended creation mechanism, or get a real `creat
 `tashtiot-apis-library` upstream, before `POST /cluster-secret` can ever succeed — no amount of
 config, DNS, or auth fixing (all of which are now genuinely done) gets around this.
 
-**Worth re-checking on every future bump of `tashtiot-apis-library`.** The pinned version here
-is `0.1.0` — an early release — and `from_credentials`/`create_app`/`delete_app` read like
-methods someone expected to exist (they match the shape of a reasonable API), not arbitrary
-typos. It's plausible upstream simply hasn't implemented Application create/delete yet and adds
-it in a later release, which would make this whole `create_cluster_secret`/`delete_cluster_secret`
-section obsolete in one shot. Don't assume this gap is permanent — the first thing to try before
-any deeper redesign is bumping the pin and re-running the exact live `dir(t.ArgoCD)` /
-`inspect.getsource(...)` check documented above against whatever version is current at the time.
+**2026-07-14 re-check, now bumped to `v1.1.2` — gap still not closed, confirmed by reading library
+source directly** (`connectors/argocd/service.py`, no live pod check needed this time). The complete
+public method list on `ArgoCD` at `v1.1.2` is unchanged from `0.1.0`:
+```
+add_namespace_to_cluster_secret, get_app_parameters, get_app_status, get_app_values,
+modify_parameters, modify_values, sync, wait_for_app_creation, wait_for_app_deletion,
+wait_for_update
+```
+Still no `create_app`, `delete_app`, or `from_credentials` anywhere in the class. The 0.1.0→1.1.2
+changelog's only ArgoCD-adjacent work is internal refactoring (dropped a private
+`_serialize_namespaces` helper, added type hints) — no new public methods. **This is not a "wait for
+the next release" gap** — three full minor releases (1.0.0, 1.1.0, 1.1.1, 1.1.2) have passed with no
+movement on it, which reads more like Application create/delete was never planned for this class
+(see the `ApplicationSet`/GitOps-automation speculation below) than an oversight. Don't re-open this
+by re-bumping the pin again on faith — if a future release's CHANGELOG.md explicitly mentions
+`create_app`/`delete_app`/ArgoCD Application lifecycle methods, that's the signal to re-check; a
+version bump alone is not.
 
 ## Token validation behaviour in local dev
 
