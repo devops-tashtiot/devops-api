@@ -22,8 +22,13 @@ PROJECT_KEY = os.environ.get("E2E_PROJECT_KEY", "E2ETEST")
 PROJECT_NAME = "e2etest"
 # admin_user schema pattern is ^[a-z0-9]+$ (lowercase alphanumeric only, no hyphens) —
 # BITBUCKET_USER itself often won't match (e.g. "svc-devops-tashtiot"), so this needs its
-# own override rather than reusing BITBUCKET_USER.
-ADMIN_USER = os.environ.get("E2E_ADMIN_USER", "nati")
+# own override rather than reusing BITBUCKET_USER. Default is "admin" because that's the one
+# account guaranteed to exist as a real user everywhere this suite runs — the local
+# docker-compose stack's seeded admin (see this repo's top-level CLAUDE.md) and this
+# platform's real Bitbucket superuser alike. "nati" was the previous default and doesn't
+# exist as a real user in either place — confirmed live via a 404 "No such users: nati" from
+# Bitbucket's own permission-assignment API.
+ADMIN_USER = os.environ.get("E2E_ADMIN_USER", "admin")
 # Must be a group that already exists in Bitbucket (this suite never creates one) and match
 # admin_group's schema pattern ^[a-zA-Z0-9_\-]+$ (no spaces) — most built-in AD groups
 # (e.g. "Domain Users") fail that pattern, so this needs an explicit, repo-safe default.
