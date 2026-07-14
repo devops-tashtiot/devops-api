@@ -261,6 +261,15 @@ either find/confirm the actual intended creation mechanism, or get a real `creat
 `tashtiot-apis-library` upstream, before `POST /cluster-secret` can ever succeed — no amount of
 config, DNS, or auth fixing (all of which are now genuinely done) gets around this.
 
+**Worth re-checking on every future bump of `tashtiot-apis-library`.** The pinned version here
+is `0.1.0` — an early release — and `from_credentials`/`create_app`/`delete_app` read like
+methods someone expected to exist (they match the shape of a reasonable API), not arbitrary
+typos. It's plausible upstream simply hasn't implemented Application create/delete yet and adds
+it in a later release, which would make this whole `create_cluster_secret`/`delete_cluster_secret`
+section obsolete in one shot. Don't assume this gap is permanent — the first thing to try before
+any deeper redesign is bumping the pin and re-running the exact live `dir(t.ArgoCD)` /
+`inspect.getsource(...)` check documented above against whatever version is current at the time.
+
 ## Token validation behaviour in local dev
 
 `_check_cluster_permissions` in `operations.py` validates each cluster token by running `kubectl auth can-i "*" "*"` against the target cluster. It raises a 401 only when kubectl writes to **stderr** (unreachable server, TLS failure, or auth rejection).
