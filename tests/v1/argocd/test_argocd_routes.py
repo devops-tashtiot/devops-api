@@ -37,8 +37,7 @@ VALID_CLUSTER = {
 VALID_CLUSTER_SECRET_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {
-        "username": "admin",
-        "password": "pass",
+        "token": "fake-argocd-token",
         "chosen_name": "nati",
         "app_name": "netanel",
         "application_clusters": [VALID_CLUSTER],
@@ -48,8 +47,7 @@ VALID_CLUSTER_SECRET_PAYLOAD = {
 VALID_CLUSTER_UPDATE_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {
-        "username": "admin",
-        "password": "pass",
+        "token": "fake-argocd-token",
         "application_clusters": [VALID_CLUSTER],
     },
 }
@@ -184,7 +182,7 @@ def _mock_argocd_for_create():
 def test_create_cluster_secret_returns_200(client):
     mock_argocd = _mock_argocd_for_create()
     with patch("app.v1.argocd.operations._check_cluster_permissions", new=AsyncMock(return_value=None)), \
-         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+         patch("app.v1.argocd.operations._build_argocd", new=MagicMock(return_value=mock_argocd)):
         response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
@@ -193,7 +191,7 @@ def test_create_cluster_secret_returns_200(client):
 def test_create_cluster_secret_calls_create_app_and_sync(client):
     mock_argocd = _mock_argocd_for_create()
     with patch("app.v1.argocd.operations._check_cluster_permissions", new=AsyncMock(return_value=None)), \
-         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+         patch("app.v1.argocd.operations._build_argocd", new=MagicMock(return_value=mock_argocd)):
         client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
     assert mock_argocd.create_app.call_count == 1
     assert mock_argocd.sync.call_count == 1
@@ -209,10 +207,10 @@ def test_create_cluster_secret_missing_clusters_returns_422(client):
 def test_delete_cluster_secret_returns_200(client):
     mock_argocd = MagicMock()
     mock_argocd.delete_app = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch("app.v1.argocd.operations._build_argocd", new=MagicMock(return_value=mock_argocd)):
         response = client.delete(
             f"{PREFIX}/cluster-secret",
-            params={"username": "admin", "password": "pass", "app_name": "netanel", "chosen_name": "nati"},
+            params={"token": "fake-argocd-token", "app_name": "netanel", "chosen_name": "nati"},
         )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
@@ -221,10 +219,10 @@ def test_delete_cluster_secret_returns_200(client):
 def test_delete_cluster_secret_calls_delete_app_once(client):
     mock_argocd = MagicMock()
     mock_argocd.delete_app = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch("app.v1.argocd.operations._build_argocd", new=MagicMock(return_value=mock_argocd)):
         client.delete(
             f"{PREFIX}/cluster-secret",
-            params={"username": "admin", "password": "pass", "app_name": "netanel", "chosen_name": "nati"},
+            params={"token": "fake-argocd-token", "app_name": "netanel", "chosen_name": "nati"},
         )
     assert mock_argocd.delete_app.call_count == 1
 
@@ -235,7 +233,7 @@ def test_edit_cluster_secret_returns_200(client):
     mock_argocd = MagicMock()
     mock_argocd.modify_parameters = AsyncMock(return_value=None)
     mock_argocd.sync = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch("app.v1.argocd.operations._build_argocd", new=MagicMock(return_value=mock_argocd)):
         response = client.put(
             f"{PREFIX}/cluster-secret/netanel/nati",
             json=VALID_CLUSTER_UPDATE_PAYLOAD,
@@ -248,7 +246,7 @@ def test_edit_cluster_secret_calls_modify_and_sync(client):
     mock_argocd = MagicMock()
     mock_argocd.modify_parameters = AsyncMock(return_value=None)
     mock_argocd.sync = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch("app.v1.argocd.operations._build_argocd", new=MagicMock(return_value=mock_argocd)):
         client.put(
             f"{PREFIX}/cluster-secret/netanel/nati",
             json=VALID_CLUSTER_UPDATE_PAYLOAD,

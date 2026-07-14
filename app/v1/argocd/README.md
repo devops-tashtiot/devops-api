@@ -98,8 +98,7 @@ Registers one or more Kubernetes clusters as ArgoCD cluster secrets by creating 
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `username` | string | yes | | ArgoCD username for the target `{app_name}` instance |
-| `password` | string | yes | | ArgoCD password |
+| `token` | string | yes | | ArgoCD API token for the target `{app_name}` instance |
 | `chosen_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Prefix for the ArgoCD app name — final name is `{chosen_name}-cluster-secret` |
 | `app_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Consumer name — used to build the target ArgoCD instance URL `https://{app_name}.argocd.{DOMAIN_SUFFIX}` |
 | `application_clusters` | array, min 1 | yes | | Clusters to register — each has `name`, `namespace` (comma-separated for multiple), `address`, `token` |

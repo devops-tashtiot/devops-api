@@ -71,14 +71,29 @@ pod (bypassing Cloudflare Access, which was interfering with git smart-HTTP thro
 hostname). Its default branch was converted from `main` to `master` to match
 `ARGOCD_GITOPS_DEFAULT_BRANCH`.
 
-With the repo in place, live-testing `POST /` now hits a **different, previously-unseen error**
-that supersedes (2)/(3) above — the Git connector isn't attempting SSH at all in the live
-deployment, it's using Bearer-token HTTP auth, and `GIT_TOKEN` is deployed as `""` (see
-`devtools-definition/devtools/devops-api/values.yaml`'s `GIT_TOKEN: "" # set out-of-band, not
-committed to git`). This produces `httpx.InvalidHeader: Illegal header value b'Bearer '` — the
-empty string is passed straight into the `Authorization` header. **Still blocked** — needs a
-real `GIT_TOKEN` provisioned out-of-band (the (2)/(3) SSH-path findings above are moot until/
-unless the connector is reconfigured to use SSH instead of the token path).
+With the repo in place, live-testing `POST /` hit a **different, previously-unseen error** that
+superseded (2)/(3) above — the Git connector isn't attempting SSH at all for file creation, it
+uses Bearer-token HTTP auth, and `GIT_TOKEN` was deployed as `""`. This produced
+`httpx.InvalidHeader: Illegal header value b'Bearer '` — the empty string passed straight into
+the `Authorization` header.
+
+**Fixed** — `GIT_TOKEN` is now sourced from the SSM SecureString `/devtools/bitbucket/api-token`
+via the chart's `vault.enabled` ExternalSecret mechanism (`clusterSecretStore:
+aws-parameter-store`; see `devtools-definition/devtools/devops-api/values.yaml`), not plaintext.
+Confirmed live: `POST /` returns `200 successful` and the file is actually committed to
+Bitbucket.
+
+**⚠️ Still broken — `DELETE /{env}/{name}`:** unlike create, delete goes through a full `git
+clone --depth 1 --branch master ... ssh://git@http::7995/...` inside the connector library —
+i.e. the *original* SSH-key/hostname-parsing bug from (2)/(3) is still fully present, just
+scoped to this one path instead of the whole module. Confirmed live: cleaning up a test
+consumer via this route failed with the exact `ssh: Could not resolve hostname http::7995`
+error; the artifact had to be removed by cloning/pushing directly against Bitbucket's in-cluster
+service instead, bypassing devops-api entirely. **This needs a real fix** — either mount a
+working SSH key at `GIT_SSH_KEY_PATH` and get the hostname-parsing bug patched upstream in
+`tashtiot-apis-library`, or find/request a version of the library where `delete_file` also uses
+the Bearer-token HTTP path like `add_file` does. Don't assume this route works just because
+create does — they are two different code paths in the vendored library.
 
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 
@@ -87,28 +102,126 @@ unless the connector is reconfigured to use SSH instead of the token path).
 deployment that doesn't exist in this cluster.
 
 **2026-07-14 update:** both fixed — wildcard DNS now resolves, and
-`ARGOCD_CLUSTER_SECRET_REPO_URL` now points at the `ARGO/argocd` Bitbucket repo (in-cluster DNS:
-`http://bitbucket.bitbucket.svc.cluster.local/scm/argo/argocd.git`). The repo was also made
-genuinely public (`-Dfeature.public.access=true` JVM arg on the Bitbucket deployment — public
-access is globally disabled by default since Bitbucket DC 8.18, confirmed via
-https://confluence.atlassian.com/bitbucketserver/allowing-public-access-to-code; no REST
+`ARGOCD_CLUSTER_SECRET_REPO_URL` now points at the `ARGO/argocd` Bitbucket repo via its real
+public hostname, `http://bitbucket.devopstashtiot.page/scm/argo/argocd.git` (see "CoreDNS
+rewrite workaround" below for how a public hostname is reachable from in-cluster callers again).
+The repo was also made genuinely public (`-Dfeature.public.access=true` JVM arg on the Bitbucket
+deployment — public access is globally disabled by default since Bitbucket DC 8.18, confirmed
+via https://confluence.atlassian.com/bitbucketserver/allowing-public-access-to-code; no REST
 endpoint exists to toggle it, `/admin/permissions/anonymous` and `/admin/settings` both 404 even
 against a `SYS_ADMIN` token), so ArgoCD needs no registered repository-credential Secret at all
 for this repo.
 
 Live-testing `POST /cluster-secret` with those fixes in place surfaced a **new, previously
 unreached blocker**: `_check_cluster_permissions()` (`operations.py:12`) shells out to `kubectl
-auth can-i ...` as a subprocess, but **the `devops-api` container image does not have `kubectl`
-installed** — fails with `[Errno 2] No such file or directory: 'kubectl'`. This runs before
-`_build_argocd()`, so it's earlier in the call chain than the DNS/repo issues — meaning those
-were never actually reached in any prior live test (the cluster-secret e2e test has always been
-skipped by default, `E2E_ARGOCD_CLUSTER_TOKEN` unset). **Still blocked** — needs `kubectl`
-added to the devops-api Docker image, or `_check_cluster_permissions` reimplemented without
-shelling out to a binary that isn't guaranteed to be present.
+auth can-i ...` as a subprocess, but **the `devops-api` container image did not have `kubectl`
+installed** — failed with `[Errno 2] No such file or directory: 'kubectl'`. This runs before
+`_build_argocd()`, so it was earlier in the call chain than the DNS/repo issues above — meaning
+those were never actually reached in any prior live test (the cluster-secret e2e test has always
+been skipped by default, `E2E_ARGOCD_CLUSTER_TOKEN` unset).
 
-Neither blocker above is fixable from within `test_argocd_e2e.py` itself — both need
-out-of-cluster provisioning (`GIT_TOKEN` secret; Docker image change) rather than test/gitops
-changes.
+**Fixed** — `kubectl` (pinned to `v1.35.1`, matching the minikube-on-EC2 cluster's own server
+version) is now installed in the `Dockerfile`.
+
+**Fixed — code/library mismatch:** with `kubectl` in place, live-testing hit a deeper bug:
+`_build_argocd()` called `ArgoCD.from_credentials(base_url, timeout, username, password)` —
+**`from_credentials` does not exist anywhere in the pinned `tashtiot-apis-library` wheel.**
+Confirmed by reading the actual installed library's source inside the live pod (`python -c
+"import tashtiot_apis_library as t, inspect; print(inspect.getsource(t.ArgoCD))"`): the real
+constructor is `ArgoCD(base_url: str, api_key: str, application_set_timeout: int)` — synchronous,
+and token-based (`api_key`) from the start. There was never a username/password code path in
+this library version; `ClusterSecretSpec.username`/`.password` were dead on arrival — no
+combination of values for them could ever have worked, in any environment, at any point. This
+was not a regression or an infra gap like the others in this file — **it was a latent bug in
+this module's original design**, invisible only because the cluster-secret e2e test has always
+been skipped and the unit tests mock `_build_argocd` entirely, so nothing ever actually called
+`ArgoCD.from_credentials` until a real live test did.
+
+Fixed by switching `ClusterSecretSpec`/`ClusterSecretUpdateSpec`/`ClusterSecretIdentifier` to a
+single required `token: str` field (ArgoCD API token) and `_build_argocd()` to a plain sync
+function calling `ArgoCD(base_url, token, timeout)` directly — no `await`, the real constructor
+isn't async. All call sites and every test file updated to match. A real token was generated
+against the platform's actual ArgoCD instance and stored at SSM `/devtools/argocd/api-token` for
+live-testing this path.
+
+**Was a real gap, now mitigated — CoreDNS rewrite workaround.** `_build_argocd()` targets
+`https://{app_name}.argocd.{DOMAIN_SUFFIX}`, i.e. a distinct ArgoCD instance per consumer. As of
+2026-07-14, `*.argocd.devopstashtiot.page` has a wildcard DNS record (Cloudflare-proxied), but
+there is still only **one** real ArgoCD instance in this cluster, and Cloudflare Access sits in
+front of the entire `*.devopstashtiot.page` domain — a programmatic token-auth request from
+`devops-api` to any public hostname on this domain would normally hit Access's email-OTP wall
+regardless of Ingress routing. This is the exact same class of problem that blocked Bitbucket's
+own git-over-HTTPS earlier in this session, and it applies to every tool devops-api calls out
+to, not just ArgoCD.
+
+**This is a workaround, not a fix**, and it's worth being explicit about why it exists: AWS
+Control Tower now permits creating a private Route53 hosted zone in this account (it didn't when
+`devtools-definition/devtools/devops-api/values.yaml`'s original in-cluster-Service-DNS
+workaround was written). A private hosted zone is the *correct* long-term replacement for this
+— but until that's built, the cluster's own **CoreDNS** (`kube-system/coredns` ConfigMap,
+applied directly via `kubectl` — not tracked in any GitOps repo, since CoreDNS isn't managed by
+`clusters-provision`/`clusters-definition`, it's minikube's own addon) carries `rewrite` rules
+that resolve every `*.devopstashtiot.page` hostname devops-api calls, for any caller running
+inside the cluster, bypassing the Tunnel and Access entirely for in-cluster traffic — while
+external/public resolution via real Cloudflare DNS is untouched:
+```
+rewrite name exact argocd.devopstashtiot.page ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto
+rewrite name regex (.*)\.argocd\.devopstashtiot\.page argocd-server.argocd.svc.cluster.local answer auto
+rewrite name exact bitbucket.devopstashtiot.page ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto
+rewrite name exact confluence.devopstashtiot.page ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto
+rewrite name exact jira.devopstashtiot.page ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto
+rewrite name exact sonarqube.devopstashtiot.page ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto
+rewrite name exact artifactory.devopstashtiot.page ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto
+```
+**Why `ingress-nginx-controller`, not each tool's own backend Service directly:** the cluster
+has a real Cloudflare Origin Certificate for `*.devopstashtiot.page`
+(`clusters-provision/clusters/ingress-nginx/templates/origin-cert-secret.yaml`), but it's
+mounted on `ingress-nginx-controller`'s Service only — every devtool's own backend Service (e.g.
+`bitbucket.bitbucket.svc.cluster.local`) is plain HTTP only, no TLS listener at all (TLS
+terminates at Cloudflare/ingress-nginx, never on the backend itself; confirmed via `kubectl get
+svc` — no `443/TCP` on any of them). An earlier version of this rewrite pointed straight at each
+backend Service and downgraded `devops-api`'s `*_API_URL` values to `http://` to match, which
+technically worked but silently gave up real TLS. Routing through
+`ingress-nginx-controller.ingress-nginx.svc.cluster.local` instead means normal host-based
+Ingress routing reaches the correct backend on the correct port (no per-tool port override
+needed, even for sonarqube (9000) or artifactory (8082)) **and** presents the real Origin Cert,
+so `https://` is genuine end-to-end TLS, not a bypass. Confirmed live via `openssl s_client`:
+every hostname presents `issuer=... OU = CloudFlare Origin SSL Certificate Authority`.
+
+Because that cert is signed by Cloudflare's own private Origin CA (not in any standard trust
+store), `devops-api`'s `Dockerfile` now installs the public, stable Cloudflare Origin CA RSA
+root cert (`cloudflare-origin-ca-rsa-root.pem`, sourced from
+https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/) into both the system
+trust store (`update-ca-certificates`) and `certifi`'s bundle (httpx uses `certifi.where()` by
+default, **not** the system store — installing only one of the two silently leaves the other
+unfixed). Without this, `devops-api`'s own `httpx`-based calls would fail real certificate
+verification the same way a bare `curl` (no `-k`) does against this cert.
+
+The per-consumer wildcard (`(.*)\.argocd\.devopstashtiot\.page`) is a **separate exception** —
+it still routes straight to `argocd-server.argocd.svc.cluster.local`, not through
+`ingress-nginx-controller`, because there is no Ingress rule at all for arbitrary `*.argocd`
+subdomains (only the bare `argocd.devopstashtiot.page` host is configured), so routing it through
+ingress-nginx would just 404. `argocd-server` happens to serve its own **self-signed** TLS cert
+on 443 (not the Cloudflare Origin Cert), which is a *third* distinct certificate `devops-api`
+would need to trust for real verification on this specific path — not yet added to the
+Dockerfile's trust store as of this writing; check live behavior before assuming this path's TLS
+verification succeeds.
+
+Verified live: all seven `rewrite` names resolve to the correct ClusterIP from inside a pod, and
+`https://<tool>.devopstashtiot.page/` round-trips through `ingress-nginx-controller` with the
+real Origin Cert for every tool except the per-consumer ArgoCD wildcard. This persists across
+normal EC2 reboots because the cluster's etcd state is persistent on this node, not
+re-bootstrapped from scratch — but it will not survive a genuine cluster rebuild, and it means
+every `{app_name}.argocd.devopstashtiot.page` currently resolves to the *same* single real
+ArgoCD instance, which is good enough to exercise the token-auth code path end-to-end (and
+confirmed the `from_credentials` fix above is correct) but is **not** real per-consumer
+isolation. If a genuine multi-tenant per-consumer ArgoCD service is ever built, or the private
+Route53 hosted zone replaces this, update/remove these rewrite rules accordingly rather than
+layering more fixes on top of a workaround.
+
+None of the fixes above were reachable or fixable purely from within `test_argocd_e2e.py` — they
+needed out-of-cluster provisioning (`GIT_TOKEN` secret, Docker image change, library API
+correction, CoreDNS rewrite) rather than test/gitops changes alone.
 
 ## Token validation behaviour in local dev
 

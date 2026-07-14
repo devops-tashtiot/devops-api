@@ -104,8 +104,7 @@ class TestApplicationCluster:
 class TestClusterSecretSpec:
     def _base(self):
         return {
-            "username": "admin",
-            "password": "pass",
+            "token": "some-argocd-token",
             "chosen_name": "nati",
             "app_name": "netanel",
             "application_clusters": [VALID_CLUSTER_DATA],
@@ -115,13 +114,9 @@ class TestClusterSecretSpec:
         spec = ClusterSecretSpec(**self._base())
         assert spec.app_name == "netanel"
 
-    def test_empty_username_raises(self):
+    def test_empty_token_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretSpec(**{**self._base(), "username": ""})
-
-    def test_empty_password_raises(self):
-        with pytest.raises(ValidationError):
-            ClusterSecretSpec(**{**self._base(), "password": ""})
+            ClusterSecretSpec(**{**self._base(), "token": ""})
 
     def test_empty_application_clusters_raises(self):
         with pytest.raises(ValidationError):
@@ -143,34 +138,33 @@ class TestClusterSecretSpec:
 class TestClusterSecretUpdateSpec:
     def test_valid_payload(self):
         spec = ClusterSecretUpdateSpec(
-            username="admin",
-            password="pass",
+            token="some-argocd-token",
             application_clusters=[VALID_CLUSTER_DATA],
         )
-        assert spec.username == "admin"
+        assert spec.token == "some-argocd-token"
 
     def test_empty_clusters_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretUpdateSpec(username="admin", password="pass", application_clusters=[])
+            ClusterSecretUpdateSpec(token="some-argocd-token", application_clusters=[])
 
-    def test_empty_username_raises(self):
+    def test_empty_token_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretUpdateSpec(username="", password="pass", application_clusters=[VALID_CLUSTER_DATA])
+            ClusterSecretUpdateSpec(token="", application_clusters=[VALID_CLUSTER_DATA])
 
 
 class TestClusterSecretIdentifier:
     def test_valid(self):
-        spec = ClusterSecretIdentifier(username="admin", password="pass", app_name="app", chosen_name="nati")
+        spec = ClusterSecretIdentifier(token="some-argocd-token", app_name="app", chosen_name="nati")
         assert spec.app_name == "app"
 
     def test_invalid_app_name_pattern_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(username="admin", password="pass", app_name="bad name!", chosen_name="nati")
+            ClusterSecretIdentifier(token="some-argocd-token", app_name="bad name!", chosen_name="nati")
 
     def test_invalid_chosen_name_pattern_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(username="admin", password="pass", app_name="app", chosen_name="bad!")
+            ClusterSecretIdentifier(token="some-argocd-token", app_name="app", chosen_name="bad!")
 
     def test_empty_app_name_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(username="admin", password="pass", app_name="", chosen_name="nati")
+            ClusterSecretIdentifier(token="some-argocd-token", app_name="", chosen_name="nati")

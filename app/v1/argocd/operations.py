@@ -47,16 +47,16 @@ async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
         )
 
 
-async def _build_argocd(app_name: str, timeout: int, username: str, password: str) -> ArgoCD:
+def _build_argocd(app_name: str, timeout: int, token: str) -> ArgoCD:
     base_url = f"https://{app_name}.argocd.{global_config.DOMAIN_SUFFIX}"
-    return await ArgoCD.from_credentials(base_url, timeout, username, password)
+    return ArgoCD(base_url, token, timeout)
 
 
 async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec) -> None:
     for cluster in payload.application_clusters:
         await _check_cluster_permissions(cluster)
 
-    argocd = await _build_argocd(payload.app_name, argocd_timeout, payload.username, payload.password)
+    argocd = _build_argocd(payload.app_name, argocd_timeout, payload.token)
     helm_params = [{"name": "appName", "value": payload.app_name}]
     for i, cluster in enumerate(payload.application_clusters):
         prefix = f"applicationClusters[{i}]"
@@ -100,7 +100,7 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
 
 
 async def delete_cluster_secret(argocd_timeout: int, params: ClusterSecretIdentifier) -> None:
-    argocd = await _build_argocd(params.app_name, argocd_timeout, params.username, params.password)
+    argocd = _build_argocd(params.app_name, argocd_timeout, params.token)
     argo_app_name = f"{params.chosen_name}-cluster-secret"
     try:
         await argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE)
@@ -110,7 +110,7 @@ async def delete_cluster_secret(argocd_timeout: int, params: ClusterSecretIdenti
 
 
 async def edit_cluster_secret(argocd_timeout: int, app_name: str, chosen_name: str, payload: ClusterSecretUpdateSpec) -> None:
-    argocd = await _build_argocd(app_name, argocd_timeout, payload.username, payload.password)
+    argocd = _build_argocd(app_name, argocd_timeout, payload.token)
     argo_app_name = f"{chosen_name}-cluster-secret"
     helm_params = [{"name": "appName", "value": app_name}]
     for i, cluster in enumerate(payload.application_clusters):
