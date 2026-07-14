@@ -121,14 +121,32 @@ elsewhere in this file.
 against the real deployed API (correct `BITBUCKET_URL`/credentials, a real inbound-auth Bearer
 token). `POST /` (create) succeeds. `DELETE /{env}/{name}` (called both directly and via each
 test's own cleanup-before-run step) doesn't fail fast with a hostname error this time — it hangs
-until the test client's 30s timeout: `httpx.ReadTimeout: timed out`. Port `7995` reachability
-through the Cloudflare-fronted path is the leading suspect (the `http::7995` bug's fix removed one
-failure mode, but nothing in this deployment has ever confirmed SSH-over-7995 actually reaches
-Bitbucket from in-cluster) but this wasn't root-caused further — would need `GIT_SSH_KEY_PATH`
-confirmed mounted and a direct SSH attempt from inside the pod to distinguish "port not reachable"
-from "hangs for another reason." `tests/v1/sonarqube/test_sonarqube_consumer_e2e.py`'s
-`DELETE /consumer/{name}` hit the identical symptom the same day — see that module's `CLAUDE.md` —
-same `git.delete_file` code path, so a fix here likely fixes both.
+until the test client's 30s timeout: `httpx.ReadTimeout: timed out`.
+
+**Root-caused, same day — two stacked bugs, not one:**
+1. Port `7995` (what the library hardcodes) is not Bitbucket's real SSH port on this deployment —
+   `kubectl get svc -n bitbucket` shows `80/TCP,7999/TCP,5701/TCP`. `7995` doesn't match anything.
+2. Even the right port wouldn't have been reachable anyway: `bitbucket.devopstashtiot.page`
+   resolves in-cluster to `ingress-nginx-controller` (the CoreDNS rewrite), which only exposes
+   `80/443` — an HTTP(S) router with no listener at all on any SSH port. A TCP SYN to a ClusterIP
+   port with no matching Service rule gets silently dropped, not rejected — hence a hang/timeout
+   instead of an instant "connection refused."
+
+**Fixed two ways:**
+- **Immediate, live workaround:** `clusters-provision/clusters/ingress-nginx/values.yaml` now
+  configures ingress-nginx's standard TCP-passthrough feature, mapping `7995` (external, what the
+  library asks for) → `bitbucket/bitbucket:7999` (real). This is marked TEMPORARY in that file —
+  remove it once the fix below ships and is actually deployed.
+- **Real fix, upstream:** opened
+  [`Platform-Infra-Org/apis-library#12`](https://github.com/Platform-Infra-Org/apis-library/pull/12)
+  adding an `ssh_port` parameter to `Git`/`GitClient` (defaults to `7995`, unaffected for every
+  other caller). Once merged and this repo bumps to a version with it, pass `ssh_port=7999`
+  explicitly here and remove the ingress-nginx TCP-passthrough workaround above — at that point
+  it's a redundant hop, not a fix.
+
+`tests/v1/sonarqube/test_sonarqube_consumer_e2e.py`'s `DELETE /consumer/{name}` hit the identical
+symptom the same day, same `git.delete_file` code path — see that module's `CLAUDE.md`; the same
+workaround/fix covers both.
 
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 

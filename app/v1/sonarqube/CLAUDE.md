@@ -123,14 +123,19 @@ mind for any other operation using `git.*` that's never been live-tested.
 ### Live-confirmed (2026-07-14) — `DELETE /consumer/{name}` times out
 
 Same underlying issue as the argocd module's `DELETE /{env}/{name}` (see
-`app/v1/argocd/CLAUDE.md`) — `delete_sonarqube_consumer()` calls `git.delete_file(...)`, which
-internally does a full `git clone` over SSH rather than the Bearer-token HTTP path `add_file`/
-`modify_file` use. Confirmed live: the request hangs and the test client's 30s timeout is hit
-(`httpx.ReadTimeout`). Not yet root-caused to the exact same hostname-parsing bug as the argocd
-module (that would need reproducing with `GIT_SSH_KEY_PATH` actually mounted and inspecting the
-SSH error directly, not just a timeout), but the shared code path and identical symptom make it
-likely. Whoever investigates the argocd `DELETE` bug further should check this route too — a fix
-to `GitClient.delete_file`'s SSH handling would fix both at once.
+`app/v1/argocd/CLAUDE.md`, which has the full root-cause) — `delete_sonarqube_consumer()` calls
+`git.delete_file(...)`, which internally does a full `git clone` over SSH rather than the
+Bearer-token HTTP path `add_file`/`modify_file` use. Confirmed live: the request hangs and the
+test client's 30s timeout is hit (`httpx.ReadTimeout`).
+
+Root-caused the same day (see `app/v1/argocd/CLAUDE.md` for the full writeup): two stacked bugs —
+the library hardcodes SSH port `7995`, which isn't Bitbucket's real SSH port here (`7999`), *and*
+that hostname resolves in-cluster to `ingress-nginx-controller`, which has no listener on any SSH
+port at all (HTTP(S)-only router), so the connection silently hangs rather than failing fast.
+Fixed both ways: an immediate `ingress-nginx` TCP-passthrough workaround (`7995` → real `7999`,
+see `clusters-provision/clusters/ingress-nginx/values.yaml`, marked temporary) and a real upstream
+fix, [`Platform-Infra-Org/apis-library#12`](https://github.com/Platform-Infra-Org/apis-library/pull/12),
+adding an `ssh_port` override to the library itself.
 
 ### Fixed bug — `DELETE /consumer/{name}` was unreachable (route-shadowing)
 
