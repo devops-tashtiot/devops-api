@@ -148,6 +148,29 @@ until the test client's 30s timeout: `httpx.ReadTimeout: timed out`.
 symptom the same day, same `git.delete_file` code path — see that module's `CLAUDE.md`; the same
 workaround/fix covers both.
 
+**2026-07-14, retested after the TCP-passthrough workaround shipped — network layer confirmed
+fixed, new (separate, simpler) blocker found.** With the ingress-nginx TCP-passthrough live,
+`DELETE /{env}/{name}` no longer hangs — it now fails immediately and cleanly:
+```
+Warning: Identity file /root/.ssh/id_ed25519 not accessible: No such file or directory.
+Warning: Permanently added '[bitbucket.devopstashtiot.page]:7995' (RSA) to the list of known hosts.
+git@bitbucket.devopstashtiot.page: Permission denied (publickey).
+```
+This is the correct, expected shape of a *working* SSH connection hitting a *missing key* —
+proof the network-level bug (wrong port, unreachable route) is genuinely fixed. `GIT_SSH_KEY_PATH`
+(`/root/.ssh/id_ed25519`) was configured all along but nothing ever actually mounted a key file
+at that path — the chart's `deployment.yaml` only supported file-mounted secrets when
+`vault.enabled: false`, which devops-api never was (see `devtools-provision`'s git history: "fix:
+allow extraSecretMounts alongside vault.enabled"). **Fixed** — generated a fresh ed25519 keypair,
+registered the public half against Bitbucket's `admin` account (`POST /rest/ssh/1.0/keys`),
+stored the private half in SSM (`/devtools/bitbucket/git-ssh-private-key`), and wired it in via
+`devtools-definition`'s `extraSecretMounts` (mounted as a file, not exposed as the primary means
+of consumption — see that repo's values.yaml comment for the minor caveat that it does also land
+as a plain env var via the same Secret's `envFrom`, accepted rather than standing up a second
+ExternalSecret just to avoid it). Not yet re-verified live after this specific change landed —
+whoever picks this up next should re-run `test_create_delete_consumer_config_full_flow` to confirm
+`DELETE /{env}/{name}` returns `200`, not just that the SSH error changed shape.
+
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 
 **2026-07-13 findings (now stale, kept for history):** no wildcard DNS for

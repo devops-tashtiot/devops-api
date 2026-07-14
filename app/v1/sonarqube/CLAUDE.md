@@ -137,6 +137,14 @@ see `clusters-provision/clusters/ingress-nginx/values.yaml`, marked temporary) a
 fix, [`Platform-Infra-Org/apis-library#12`](https://github.com/Platform-Infra-Org/apis-library/pull/12),
 adding an `ssh_port` override to the library itself.
 
+**Update, same day:** with the TCP-passthrough workaround live, this route's error shape changed
+from a hang to an immediate `Permission denied (publickey)` — no SSH key was ever actually mounted
+into the pod (`GIT_SSH_KEY_PATH` was configured but pointed at nothing). Fixed by generating a
+keypair, registering it with Bitbucket, and mounting it via `devtools-definition`'s
+`extraSecretMounts` — full details in `app/v1/argocd/CLAUDE.md`'s matching entry, since it's the
+exact same key/mount serving both modules. Not yet re-verified live after this specific change —
+re-run this module's own DELETE test too before assuming it's fully closed.
+
 ### Fixed bug — `DELETE /consumer/{name}` was unreachable (route-shadowing)
 
 `DELETE /{consumer_name}/{name}` (group delete) and `DELETE /consumer/{name}` (consumer-config
