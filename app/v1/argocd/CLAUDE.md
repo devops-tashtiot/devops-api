@@ -114,8 +114,21 @@ because anyone fixed this bug. **Do not mark this resolved on that basis** — t
 is still wrong in principle (it'll break again for any future `http://` `GIT_API_URL`), and whether
 port `7995` (Bitbucket SSH) is even reachable through the Cloudflare Tunnel from in-cluster is a
 separate, unverified question — `bitbucket.devopstashtiot.page` is only confirmed reachable on 443
-elsewhere in this file. The only way to actually know if `DELETE /{env}/{name}` works now is a real
-live test, not source-reading or arithmetic.
+elsewhere in this file.
+
+**2026-07-14, actually live-tested — still broken, but not with the `http::7995` symptom.** Ran
+`test_create_delete_consumer_config_full_flow` and `test_create_consumer_config_with_rbac_lines`
+against the real deployed API (correct `BITBUCKET_URL`/credentials, a real inbound-auth Bearer
+token). `POST /` (create) succeeds. `DELETE /{env}/{name}` (called both directly and via each
+test's own cleanup-before-run step) doesn't fail fast with a hostname error this time — it hangs
+until the test client's 30s timeout: `httpx.ReadTimeout: timed out`. Port `7995` reachability
+through the Cloudflare-fronted path is the leading suspect (the `http::7995` bug's fix removed one
+failure mode, but nothing in this deployment has ever confirmed SSH-over-7995 actually reaches
+Bitbucket from in-cluster) but this wasn't root-caused further — would need `GIT_SSH_KEY_PATH`
+confirmed mounted and a direct SSH attempt from inside the pod to distinguish "port not reachable"
+from "hangs for another reason." `tests/v1/sonarqube/test_sonarqube_consumer_e2e.py`'s
+`DELETE /consumer/{name}` hit the identical symptom the same day — see that module's `CLAUDE.md` —
+same `git.delete_file` code path, so a fix here likely fixes both.
 
 ### Cluster-secret routes (`POST/DELETE/PUT /cluster-secret*`)
 

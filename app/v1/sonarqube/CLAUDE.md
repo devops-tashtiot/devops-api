@@ -98,11 +98,39 @@ constructs this `Git` client once at startup (`GIT_PROJECT_KEY` / `SONARQUBE_AAS
 | Route | Git call | Path |
 |---|---|---|
 | `POST /consumer/` | `git.add_file` | `consumers/{name}/config.yaml` |
-| `PUT /consumer/{name}` | `git.update_file` | `consumers/{name}/config.yaml` |
+| `PUT /consumer/{name}` | `git.modify_file` | `consumers/{name}/config.yaml` |
 | `DELETE /consumer/{name}` | `git.delete_file` | `consumers/{name}/config.yaml` |
 
 `config.yaml` always includes `name`; `plugins_list` (comma-joined) and `size` are only written
 when non-default (`size` omits the key entirely when `default`).
+
+### Fixed bug (2026-07-14) — `PUT /consumer/{name}` called a method that doesn't exist
+
+`update_sonarqube_consumer()` called `git.update_file(...)` — **`update_file` is not a real
+method on `tashtiot_apis_library`'s `Git` class** (the real name is `modify_file`; confirmed by
+reading `connectors/git/service.py`'s method list directly, both at `0.1.0` and `v1.1.2`). This
+raised a bare `AttributeError` on every call, caught by the generic `except Exception: raise` and
+surfacing to the caller as an undecorated `500 Internal Server Error` with no detail — confirmed
+live (2026-07-14) hitting the real deployed API. The bug was invisible to the existing unit test
+suite because `tests/v1/sonarqube/conftest.py`'s `mock_git` fixture also mocked
+`git.update_file` — the mock matched the bug instead of the real library's interface, so
+`test_update_consumer_calls_update_file_with_expected_path_and_content` passed regardless of
+whether the real method existed. Fixed both the operation (`git.modify_file`) and the mock/test
+name to match. This class of bug — a mock that silently matches a wrong method name — can only be
+caught by testing against the real library/service, not by a more careful mock; worth keeping in
+mind for any other operation using `git.*` that's never been live-tested.
+
+### Live-confirmed (2026-07-14) — `DELETE /consumer/{name}` times out
+
+Same underlying issue as the argocd module's `DELETE /{env}/{name}` (see
+`app/v1/argocd/CLAUDE.md`) — `delete_sonarqube_consumer()` calls `git.delete_file(...)`, which
+internally does a full `git clone` over SSH rather than the Bearer-token HTTP path `add_file`/
+`modify_file` use. Confirmed live: the request hangs and the test client's 30s timeout is hit
+(`httpx.ReadTimeout`). Not yet root-caused to the exact same hostname-parsing bug as the argocd
+module (that would need reproducing with `GIT_SSH_KEY_PATH` actually mounted and inspecting the
+SSH error directly, not just a timeout), but the shared code path and identical symptom make it
+likely. Whoever investigates the argocd `DELETE` bug further should check this route too — a fix
+to `GitClient.delete_file`'s SSH handling would fix both at once.
 
 ### Fixed bug — `DELETE /consumer/{name}` was unreachable (route-shadowing)
 

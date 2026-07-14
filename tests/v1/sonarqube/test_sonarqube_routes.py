@@ -215,10 +215,10 @@ def test_update_consumer_returns_200(client, mock_git):
     assert response.json()["status"] == "successful"
 
 
-def test_update_consumer_calls_update_file_with_expected_path_and_content(client, mock_git):
+def test_update_consumer_calls_modify_file_with_expected_path_and_content(client, mock_git):
     client.put(f"{PREFIX}/consumer/test-consumer", json=CONSUMER_UPDATE_PAYLOAD)
-    assert mock_git.update_file.call_count == 1
-    path, message, content = mock_git.update_file.call_args.args
+    assert mock_git.modify_file.call_count == 1
+    path, message, content = mock_git.modify_file.call_args.args
     assert path == "consumers/test-consumer/config.yaml"
     assert "test-consumer" in message
     assert "plugins_list: https://s3/plugin-b.jar" in content

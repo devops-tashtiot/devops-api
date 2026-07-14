@@ -77,7 +77,7 @@ async def update_sonarqube_consumer(git: Git, name: str, payload: SonarQubeConsu
         data["size"] = payload.size.value
     content = yaml.dump(data, default_flow_style=False, sort_keys=False)
     try:
-        await git.update_file(path, f"Update sonarqube consumer config for {name}", content)
+        await git.modify_file(path, f"Update sonarqube consumer config for {name}", content)
     except Exception as e:
         logger.error(f"Unexpected error updating sonarqube consumer config {name}: {str(e)}")
         raise
