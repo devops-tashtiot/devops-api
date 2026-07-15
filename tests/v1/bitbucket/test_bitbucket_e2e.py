@@ -52,35 +52,9 @@ def bb():
         yield client
 
 
-# devops-api itself now requires a Bearer token (tashtiot-apis-library's inbound auth,
-# AUTH_ENABLED=true in the live deployment) — mint one via client_credentials against the
-# durable devops-api-e2e-tests Keycloak client (clusters-provision/clusters/rhbk). Falls back
-# to no Authorization header if the secret isn't set (e.g. a local AUTH_ENABLED=false stack).
-E2E_TOKEN_URL = os.environ.get("E2E_KEYCLOAK_TOKEN_URL", "https://rhbk.devopstashtiot.page/realms/devtools/protocol/openid-connect/token")
-E2E_CLIENT_ID = os.environ.get("E2E_KEYCLOAK_CLIENT_ID", "devops-api-e2e-tests")
-E2E_CLIENT_SECRET = os.environ.get("E2E_KEYCLOAK_CLIENT_SECRET", "")
-
-
-def _api_auth_headers() -> dict:
-    if not E2E_CLIENT_SECRET:
-        return {}
-    resp = httpx.post(
-        E2E_TOKEN_URL,
-        data={
-            "grant_type": "client_credentials",
-            "client_id": E2E_CLIENT_ID,
-            "client_secret": E2E_CLIENT_SECRET,
-            "scope": "devops-api-audience",
-        },
-        timeout=10.0,
-    )
-    resp.raise_for_status()
-    return {"Authorization": f"Bearer {resp.json()['access_token']}"}
-
-
 @pytest.fixture(scope="module")
 def api():
-    with httpx.Client(base_url=API_URL, timeout=30.0, headers=_api_auth_headers()) as client:
+    with httpx.Client(base_url=API_URL, timeout=30.0) as client:
         yield client
 
 

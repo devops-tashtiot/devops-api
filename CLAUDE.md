@@ -81,18 +81,34 @@ A `devops-api` client + `devops-api-audience` client scope (audience mapper) exi
 for this purpose — see `clusters-provision/clusters/rhbk/CLAUDE.md` (or `values.yaml`/
 `realm-import.yaml`/`provision-oidc-clients-job.yaml` directly) for how it's provisioned, and
 `devtools-definition/devtools/devops-api/values.yaml` for the live `AUTH_*` env values actually
-deployed. **As of the last update here, `AUTH_ENABLED` is set to `true` in that live deployment**
+deployed.
+
+**Disabled as of 2026-07-15 (explicit decision, reversing the note below)** — `AUTH_ENABLED` is
+now `"false"` in the live deployment: every route is open again, no Bearer token required. No
+confirmed real caller of devops-api was ever found to actually need this (only ad-hoc test
+tokens exercised it), and it was adding friction to every e2e suite without a concrete threat it
+was mitigating. `AUTH_OIDC_ISSUER`/`AUTH_AUDIENCE` are left populated in `devtools-definition`
+(inert while disabled) so re-enabling later is just flipping `AUTH_ENABLED` back to `"true"` —
+no need to rediscover those values. The e2e test suites' token-minting helper
+(`_api_auth_headers()`, previously present in `tests/v1/{argocd,jira,bitbucket,sonarqube}/*_e2e.py`)
+was removed accordingly; re-add it (see git history around 2026-07-15 for the exact pattern) if
+auth is re-enabled.
+
+The rest of this section documents the *prior* enabled state, kept for when/if it's turned back
+on:
+
+~~**As of the last update here, `AUTH_ENABLED` is set to `true` in that live deployment**
 — every route (minus the exclude list) requires a valid Bearer token issued by that Keycloak
 realm with `aud: devops-api`. No caller of devops-api was found documented anywhere in this
 platform at the time this was enabled (only Cloudflare-Access-gated human access and
 unauthenticated in-cluster access were confirmed) — if something *does* call devops-api
 programmatically and breaks after this, it needs a real token via the `client_credentials` grant
-against the Keycloak client scope above, not a revert of this setting.
+against the Keycloak client scope above, not a revert of this setting.~~
 
-**Verified end-to-end live** (2026-07-14): no-token → `401`; a real Keycloak-issued token (via
-`client_credentials` against a temporary test client granted the `devops-api-audience` scope,
-deleted after) → `200` with real route data; `/docs`/`/openapi.json` stay open. Two real gotchas
-hit along the way, both fixed, worth knowing before touching this again:
+**Verified end-to-end live** (2026-07-14, while still enabled): no-token → `401`; a real
+Keycloak-issued token (via `client_credentials` against a temporary test client granted the
+`devops-api-audience` scope, deleted after) → `200` with real route data; `/docs`/`/openapi.json`
+stay open. Two real gotchas hit along the way, both fixed, worth knowing if this gets re-enabled:
 
 1. **`AUTH_OIDC_ISSUER` must be the real public `https://rhbk.devopstashtiot.page/realms/devtools`
    hostname — not what you get by querying Keycloak's ClusterIP directly.** Decoding a token
