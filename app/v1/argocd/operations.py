@@ -105,7 +105,7 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
 
     argo_app_name = f"{payload.chosen_name}-cluster-secret"
     try:
-        await argocd.create_app(app_body, validate=False)
+        await argocd.create_app(app_body, validate=False, wait=True)
         await argocd.sync(argo_app_name)
     except Exception as e:
         logger.error(f"Unexpected error creating cluster secret {argo_app_name}: {str(e)}")

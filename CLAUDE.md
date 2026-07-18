@@ -327,6 +327,23 @@ The module `CLAUDE.md` is the authoritative developer reference for that service
 
 ---
 
+## Workaround tracking rule
+
+Any time you introduce a workaround — a temporary fix that unblocks something now but has a
+known "real" fix pending elsewhere (an upstream library change, a Terraform/DNS change, a config
+fix in another repo) — file a GitHub issue in this repo (`gh issue create --repo
+devops-tashtiot/devops-api --label bug`) describing: what's broken, the workaround applied and
+where, and what the real fix would be (link the blocking PR/issue if one already exists, and
+cross-link back from that PR/issue with a comment if it's in a different repo). Do this
+immediately, not just as a note in a module's `CLAUDE.md` — the `CLAUDE.md` documents *how the
+system works today*, the issue tracks *that it still needs to be undone*.
+
+Ordinary bug fixes (wrong method name, missing binary, route-shadowing, a hardcoded value that
+should be looked up, etc.) don't need an issue — only fixes that are explicitly
+temporary/hacky and leave a "real fix" undone elsewhere.
+
+---
+
 ## Prefer live API lookups over hardcoded values
 
 **Never hardcode enumerable values that the target service can return via its own API.** Examples: project roles, permission types, user groups, repository categories. Instead:

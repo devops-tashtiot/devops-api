@@ -431,6 +431,30 @@ changes, wait for the `ArgoCD` client scope + RBAC to actually sync, then hit `P
 section above) against an Application that already exists, and confirm it actually succeeds
 rather than 401/403ing.
 
+## `create_cluster_secret` now waits for app visibility before syncing (2026-07-18)
+
+`create_cluster_secret()` (`operations.py:108`) calls `argocd.create_app(app_body, validate=False, wait=True)`,
+immediately followed by `argocd.sync(argo_app_name)`. `wait=True` was added to close a real
+eventual-consistency race: `sync()` targets the just-created Application by name right after
+`create_app` returns, but Argo CD's own API can still 403 on a `get_app` for a few seconds after
+creation before it becomes visible — the exact condition `ArgoCD.wait_for_app_creation` (library
+`service.py:261-274`) polls for. Without `wait=True`, `sync()` could occasionally race that window
+and fail even though creation itself succeeded.
+
+The library's own `create_app` default stays `wait=False` (this is the only call site that needs
+it) — the wait is bounded by `ARGOCD_APPLICATION_SET_TIMEOUT` (`conf.py:39`, default `300`s): if the
+app still isn't visible after that long, `wait_for_app_creation` raises `TimeoutError`, which
+propagates out of this function as a failure (not proof creation itself failed — just that this
+call gave up waiting for it to become visible).
+
+**Known risk, not yet verified live:** this endpoint sits behind ingress-nginx and Cloudflare
+Tunnel, both of which have proxy-level read timeouts shorter than 300s (ingress-nginx default
+`proxy-read-timeout` ~60s; Cloudflare free-plan edge timeout ~100s). In a degraded scenario where
+Argo CD is slow to make the app gettable, the proxy layer could time out and return an error to
+the caller before `wait_for_app_creation` itself gives up — while `create_cluster_secret` keeps
+running server-side regardless. Not hit in practice yet; flagging so it isn't a surprise if a
+future live check for this route sees a `502`/`504` that isn't actually a devops-api bug.
+
 ## Token validation behaviour in local dev
 
 `_check_cluster_permissions` in `operations.py` validates each cluster token by running `kubectl auth can-i "*" "*"` against the target cluster. It raises a 401 only when kubectl writes to **stderr** (unreachable server, TLS failure, or auth rejection).
