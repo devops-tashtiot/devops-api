@@ -366,6 +366,33 @@ by re-bumping the pin again on faith — if a future release's CHANGELOG.md expl
 `create_app`/`delete_app`/ArgoCD Application lifecycle methods, that's the signal to re-check; a
 version bump alone is not.
 
+**2026-07-19 — gap closed, `requirements.txt` bumped to `v1.2.1`.**
+[`apis-library#15`](https://github.com/Platform-Infra-Org/apis-library/pull/15) ("Add
+create_app/delete_app for Application lifecycle") merged and shipped in `v1.2.0`. Confirmed by
+reading the real `v1.2.1` source (`connectors/argocd/service.py` at that tag): `ArgoCD` now has
+```python
+async def create_app(self, app_definition, validate: bool = True, upsert: bool = False, wait: bool = False) -> ArgoApplication
+async def delete_app(self, app_name: str, app_namespace: Optional[str] = None, cascade: bool = True, wait: bool = False) -> None
+```
+Both signatures already match how this module calls them —
+`argocd.create_app(app_body, validate=False, wait=True)` (`operations.py:108`) and
+`argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE)` (`operations.py:119`) — so no
+call-site changes were needed, only the version bump. **This closes the code-level gap only.**
+The actual live behavior of `POST/DELETE /cluster-secret*` against the real cluster (does
+`create_app` really create a working Application, does the RBAC/SSO wiring from the "Outbound
+auth" section above actually work end-to-end) has **not** been re-verified as of this note —
+that's the next thing to do, not something to assume passes because the method now exists.
+
+**`ssh_port` tracking, resolved the same day:** [`apis-library#12`](https://github.com/Platform-Infra-Org/apis-library/pull/12)
+also merged (shipped in `v1.2.1`). `app/main.py`'s two `Git(...)` instantiations (sonarqube and
+this module) now pass `ssh_port=global_config.GIT_SSH_PORT` (new field in `global_conf.py`,
+default `7999`), and `devtools-definition/devtools/devops-api/values.yaml` sets
+`GIT_SSH_PORT: "7999"` explicitly. The `clusters-provision/clusters/ingress-nginx` TCP-passthrough
+workaround (`7995` → `bitbucket/bitbucket:7999`) is **deliberately left in place** — its own
+comment says to remove it only once this fix "ships and is actually deployed," and this change
+has not been pushed/deployed yet. Remove that workaround as a follow-up once this is live and
+confirmed working, not before.
+
 ## Outbound auth — migrated from a caller-supplied static token to SSO (2026-07-14)
 
 `_build_argocd()` previously took a `token: str` argument sourced straight from the request

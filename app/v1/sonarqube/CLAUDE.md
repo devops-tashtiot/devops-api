@@ -204,6 +204,12 @@ this repo's connector-usage rule, so `PUT /consumer/{name}` remains genuinely br
 the library fix is merged, released, and `devops-api/requirements.txt` is bumped to it. Tracked
 in [`devops-api#6`](https://github.com/devops-tashtiot/devops-api/issues/6).
 
+**2026-07-19 — fix pulled in, `requirements.txt` bumped to `v1.2.1`.** `apis-library#13` merged
+and shipped in `v1.1.3`, well before `v1.2.1`, so this bump includes it. This closes the
+code-level gap only — `devops-api#6` is being left **open** until `PUT /consumer/{name}` is
+actually re-tested live against the real Bitbucket instance (this bump was not pushed/deployed
+as part of making this note); don't close that issue on the strength of a version bump alone.
+
 ### Fixed bug — `DELETE /consumer/{name}` was unreachable (route-shadowing)
 
 `DELETE /{consumer_name}/{name}` (group delete) and `DELETE /consumer/{name}` (consumer-config

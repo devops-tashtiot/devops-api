@@ -13,4 +13,4 @@ pyyaml>=6.0.1
 psutil>=5.9.7
 starlette>=0.41.3
 starlette-exporter>=0.21.0
-tashtiot-apis-library @ https://github.com/Platform-Infra-Org/apis-library/releases/download/v1.1.2/tashtiot_apis_library-1.1.2-py3-none-any.whl
+tashtiot-apis-library @ https://github.com/Platform-Infra-Org/apis-library/releases/download/v1.2.1/tashtiot_apis_library-1.2.1-py3-none-any.whl
