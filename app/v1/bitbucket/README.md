@@ -29,6 +29,14 @@ Rolls back (deletes the project) automatically if any permission step fails.
 
 ---
 
+### `DELETE /{key}`
+
+Deletes a Bitbucket project. Bitbucket refuses to delete a project that still contains
+repositories (`409 IntegrityException`), so this endpoint first lists and deletes every
+repository under the project, then deletes the project itself.
+
+---
+
 ### `GET /user-dirs`
 
 Returns all user directories configured in Bitbucket (including AD/LDAP directories).

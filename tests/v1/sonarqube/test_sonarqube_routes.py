@@ -155,3 +155,85 @@ def test_create_group_unexpected_error_triggers_rollback(mock_sonar_client):
     endpoints = [call.args[0] for call in mock_sonar_client.post.call_args_list]
     assert any("user_groups/create" in ep for ep in endpoints)
     assert any("user_groups/delete" in ep for ep in endpoints)
+
+
+def test_get_sizes_returns_200(client):
+    response = client.get(f"{PREFIX}/sizes")
+    assert response.status_code == 200
+    assert response.json() == ["default", "medium", "big"]
+
+
+CONSUMER_PAYLOAD = {
+    "metadata": VALID_METADATA,
+    "spec": {"name": "test-consumer", "plugins_list": ["https://s3/plugin-a.jar"], "size": "medium"},
+}
+
+CONSUMER_UPDATE_PAYLOAD = {
+    "metadata": VALID_METADATA,
+    "spec": {"plugins_list": ["https://s3/plugin-b.jar"], "size": "big"},
+}
+
+
+def test_create_consumer_returns_200(client, mock_git):
+    response = client.post(f"{PREFIX}/consumer/", json=CONSUMER_PAYLOAD)
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+
+
+def test_create_consumer_calls_add_file_with_expected_path_and_content(client, mock_git):
+    client.post(f"{PREFIX}/consumer/", json=CONSUMER_PAYLOAD)
+    assert mock_git.add_file.call_count == 1
+    path, message, content = mock_git.add_file.call_args.args
+    assert path == "consumers/test-consumer/config.yaml"
+    assert "test-consumer" in message
+    assert "name: test-consumer" in content
+    assert "plugins_list: https://s3/plugin-a.jar" in content
+    assert "size: medium" in content
+
+
+def test_create_consumer_default_size_omits_size_key(client, mock_git):
+    client.post(
+        f"{PREFIX}/consumer/",
+        json={"metadata": VALID_METADATA, "spec": {"name": "test-consumer"}},
+    )
+    content = mock_git.add_file.call_args.args[2]
+    assert "size" not in content
+    assert "plugins_list" not in content
+
+
+def test_create_consumer_invalid_name_returns_422(client):
+    response = client.post(
+        f"{PREFIX}/consumer/",
+        json={"metadata": VALID_METADATA, "spec": {"name": "invalid name!"}},
+    )
+    assert response.status_code == 422
+
+
+def test_update_consumer_returns_200(client, mock_git):
+    response = client.put(f"{PREFIX}/consumer/test-consumer", json=CONSUMER_UPDATE_PAYLOAD)
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+
+
+def test_update_consumer_calls_modify_file_with_expected_path_and_content(client, mock_git):
+    client.put(f"{PREFIX}/consumer/test-consumer", json=CONSUMER_UPDATE_PAYLOAD)
+    assert mock_git.modify_file.call_count == 1
+    path, message, content = mock_git.modify_file.call_args.args
+    assert path == "consumers/test-consumer/config.yaml"
+    assert "test-consumer" in message
+    assert "plugins_list: https://s3/plugin-b.jar" in content
+    assert "size: big" in content
+
+
+def test_delete_consumer_returns_200(client, mock_git):
+    response = client.delete(f"{PREFIX}/consumer/test-consumer")
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+
+
+def test_delete_consumer_calls_delete_file_with_expected_path(client, mock_git):
+    client.delete(f"{PREFIX}/consumer/test-consumer")
+    assert mock_git.delete_file.call_count == 1
+    path, message = mock_git.delete_file.call_args.args
+    assert path == "consumers/test-consumer/config.yaml"
+    assert "test-consumer" in message

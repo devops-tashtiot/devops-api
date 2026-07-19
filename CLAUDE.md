@@ -63,6 +63,84 @@ The app is a FastAPI service that orchestrates DNS records, HAProxy load-balance
 
 **Connector usage rule** — always import and use the high-level service classes (`ArgoCD`, `Git`, `Vault`, `AWX`) from `tashtiot_apis_library`. Never import or instantiate the low-level `*Client` classes (e.g. `ArgoCDClient`, `GitClient`) directly — those are internal implementation details of the library. Each service class is instantiated once in `app/main.py:create_app()` and passed into router factories. See `app/v1/haproxy/operations.py` as the reference pattern for ArgoCD.
 
+**Inbound auth (`tashtiot_apis_library` >= v1.0.0)** — `app/main.py` builds the app with
+`general_create_app(enable_auth=True)`. That flag alone changes nothing: the library's
+`AuthMiddleware` (which would protect every route except `/health`, `/metrics`, `/docs`,
+`/redoc`, `/openapi.json`, `/static`, `/.well-known`, and probes) only actually activates when
+the env var `AUTH_ENABLED=true` **and** exactly one verification-material source (`AUTH_HS256_SECRET`,
+`AUTH_PUBLIC_KEY_PEM`/`AUTH_PUBLIC_KEY_PATH`, or `AUTH_JWKS_URL`/`AUTH_OIDC_ISSUER`) is also set —
+zero or more than one raises `AuthConfigError` at startup. These `AUTH_*` vars are read directly
+by the library's own internal settings object, not by this app's `global_conf.py` — there is
+nothing to wire in Python beyond the `enable_auth=True` flag itself. See `.env.example`'s
+"Inbound auth" block for the full variable list and a local-dev token recipe (`gen-auth-material`,
+a console script the library installs).
+
+This platform's real identity provider for this is Keycloak (`rhbk`, deployed via
+`clusters-provision`/`clusters-definition` — issuer `https://rhbk.devopstashtiot.page/realms/devtools`).
+A `devops-api` client + `devops-api-audience` client scope (audience mapper) exist in that realm
+for this purpose — see `clusters-provision/clusters/rhbk/CLAUDE.md` (or `values.yaml`/
+`realm-import.yaml`/`provision-oidc-clients-job.yaml` directly) for how it's provisioned, and
+`devtools-definition/devtools/devops-api/values.yaml` for the live `AUTH_*` env values actually
+deployed.
+
+**Disabled as of 2026-07-15 (explicit decision, reversing the note below)** — `AUTH_ENABLED` is
+now `"false"` in the live deployment: every route is open again, no Bearer token required. No
+confirmed real caller of devops-api was ever found to actually need this (only ad-hoc test
+tokens exercised it), and it was adding friction to every e2e suite without a concrete threat it
+was mitigating. `AUTH_OIDC_ISSUER`/`AUTH_AUDIENCE` are left populated in `devtools-definition`
+(inert while disabled) so re-enabling later is just flipping `AUTH_ENABLED` back to `"true"` —
+no need to rediscover those values. The e2e test suites' token-minting helper
+(`_api_auth_headers()`, previously present in `tests/v1/{argocd,jira,bitbucket,sonarqube}/*_e2e.py`)
+was removed accordingly; re-add it (see git history around 2026-07-15 for the exact pattern) if
+auth is re-enabled.
+
+The rest of this section documents the *prior* enabled state, kept for when/if it's turned back
+on:
+
+~~**As of the last update here, `AUTH_ENABLED` is set to `true` in that live deployment**
+— every route (minus the exclude list) requires a valid Bearer token issued by that Keycloak
+realm with `aud: devops-api`. No caller of devops-api was found documented anywhere in this
+platform at the time this was enabled (only Cloudflare-Access-gated human access and
+unauthenticated in-cluster access were confirmed) — if something *does* call devops-api
+programmatically and breaks after this, it needs a real token via the `client_credentials` grant
+against the Keycloak client scope above, not a revert of this setting.~~
+
+**Verified end-to-end live** (2026-07-14, while still enabled): no-token → `401`; a real
+Keycloak-issued token (via `client_credentials` against a temporary test client granted the
+`devops-api-audience` scope, deleted after) → `200` with real route data; `/docs`/`/openapi.json`
+stay open. Two real gotchas hit along the way, both fixed, worth knowing if this gets re-enabled:
+
+1. **`AUTH_OIDC_ISSUER` must be the real public `https://rhbk.devopstashtiot.page/realms/devtools`
+   hostname — not what you get by querying Keycloak's ClusterIP directly.** Decoding a token
+   fetched via `rhbk-service.rhbk.svc.cluster.local:8080` directly (bypassing ingress-nginx)
+   showed `iss: http://rhbk.devopstashtiot.page:8080/...` — Keycloak's own hostname resolution
+   falling back to its internal scheme+port with no `X-Forwarded-Proto` to trust. That's an
+   artifact of skipping the proxy, not what any real caller receives; fetching a token through
+   the actual public hostname (matching how `argocd`/`sonarqube` are already configured) gives
+   back the correct `https://` issuer. Don't "fix" `AUTH_OIDC_ISSUER` to the `http://...:8080`
+   form based on a ClusterIP-direct test — verify through the real ingress path.
+2. **`rhbk.devopstashtiot.page` had no CoreDNS rewrite rule** (see the argocd module's CLAUDE.md
+   for the full rewrite-workaround background) — the one tool on this domain without one. This
+   meant devops-api's own outbound JWKS-fetch call (needed on every request to verify a token's
+   signature, not just at startup — OIDC discovery succeeds at startup regardless, so a clean
+   startup log does *not* mean JWKS fetching will work) went out through real Cloudflare DNS and
+   hit Access's email-OTP wall: `JWKS key resolution failed: ... HTTP Error 403: Forbidden`,
+   surfaced as every request 401ing with "Unable to verify token" even with a valid token. Fixed
+   by adding `rhbk.devopstashtiot.page` to the `kube-system/coredns` ConfigMap's rewrite rules
+   (same pattern as the other six, routed through `ingress-nginx-controller` for the real
+   Cloudflare Origin Cert) — applied directly via `kubectl`, not tracked in any GitOps repo, same
+   as the rest of that ConfigMap.
+
+**Also worth knowing:** devops-api's env vars are injected via `envFrom: configMapRef` (the
+`devops-api-env` ConfigMap), not inline `env:` entries. Kubernetes does **not** restart pods when
+a referenced ConfigMap's contents change — after any `devtools-definition` env-value change
+(including `AUTH_*`), the already-running pod keeps using whatever it read at its own startup
+until something restarts it. ArgoCD syncing the ConfigMap is not enough by itself; either wait for
+the next `image.tag` bump (which does force a new pod via the image change) or run `kubectl
+rollout restart deployment/devops-api -n devops-api` manually. Learned this the hard way
+verifying the fix above — the ConfigMap had the corrected value while the running pod still
+rejected every token with the stale one.
+
 **Tests** — `tests/v1/` and `tests/v2/` mirror the app structure. Fixtures (client, mock clients, sample payloads) live in `conftest.py` files at each level. `pytest.ini` sets `pythonpath = .` so imports start from the repo root.
 
 **CI** — GitHub Actions, `.github/workflows/docker-publish.yml`, is the *actual* active
@@ -174,6 +252,61 @@ Local SonarQube: `docker compose -f ../docker-compose.sonarqube.yaml up -d`
 
 ---
 
+## Checking all devtool APIs live against the cluster
+
+When asked to "check all tools" / "check all APIs work" / "check <service> APIs work", this
+means verifying the deployed devops-api against the **real** Minikube cluster (not local
+docker-compose), for every route in that module — not just spot-checking one endpoint. Follow
+this exact sequence (established doing this for Bitbucket and Jira):
+
+1. **Confirm AWS creds are live**: `aws sts get-caller-identity` (profile
+   `342831714456_Workload-Admin-PS`, region `il-central-1`). If expired (`RequestExpired`),
+   ask the user to refresh — you cannot do this yourself (browser SSO).
+2. **Confirm the Minikube EC2 instance and `devtools-rds` are running**
+   (`aws ec2 describe-instances` / `aws rds describe-db-instances` on instance
+   `i-0a9e2bbdd44475741` / db `devtools-rds`). If either is `stopped`, ask before starting them
+   — `devtools-rds` in particular takes several minutes and DB-dependent pods (Bitbucket,
+   Confluence, Jira, etc.) will show `Error`/`CrashLoopBackOff` until it's back; they recover
+   on their own once RDS is available again, no manual pod restart needed.
+3. **SSM into the instance** for every subsequent command: `aws ssm send-command
+   --instance-ids i-0a9e2bbdd44475741 --document-name AWS-RunShellScript --parameters
+   'commands=["export KUBECONFIG=/root/.kube/config; <cmd>"]'`, then
+   `aws ssm get-command-invocation` to read the result. The kubeconfig lives at
+   `/root/.kube/config` (SSM runs as root) — plain `kubectl` with no `KUBECONFIG` set fails
+   with a `localhost:8080` connection-refused error.
+4. **Confirm devops-api's actual deployed image tag** (`kubectl get pods -n devops-api -o
+   jsonpath={.items[0].spec.containers[0].image}`) so you know whether you're verifying
+   already-pushed code or need to push first.
+5. **Exercise every route** via `kubectl exec` into a pod that already has `curl`/`python3`
+   (the target service's own pod, e.g. `bitbucket-0`/`jira-0`, works well) hitting devops-api's
+   ClusterIP directly (`kubectl get svc -n devops-api` for the IP) — this tests the real code
+   path end-to-end, not a mocked unit test. For anything destructive (create/delete), always
+   clean up the test artifact afterward and confirm it's actually gone with a raw call to the
+   upstream service directly (not just trusting devops-api's response).
+6. **Cross-check against the upstream service directly** where relevant (e.g. does the raw
+   Bitbucket/Jira/Confluence API agree with what devops-api reported?) — this is how the
+   Bitbucket repo-cascade-delete bug and the Jira mandatory-lead / broken-sync bugs were found.
+   Don't just trust devops-api's response; verify state changed (or didn't) on the real service.
+7. **Document any bug found** in that module's `CLAUDE.md` per the maintenance rule below,
+   including what was tried and the exact live response — not just a description.
+8. **Write or update a real e2e test** at `tests/v1/<service>/test_<service>_e2e.py` (naming:
+   `test_bitbucket_e2e.py`, `test_jira_e2e.py` — no `_project_` in the name) mirroring the
+   existing pattern: module-scoped `httpx.Client` fixtures for both the raw service and
+   devops-api, env-var overrides so the same file works locally or via
+   `kubectl port-forward` + `pytest -m integration`, one test per route/behavior, and cleanup
+   of anything created. These hit real services — never mock in this file (unit tests with
+   mocks belong in `test_<service>_routes.py` / `test_<service>_schema.py` instead, per
+   "Writing tests for a service module" above).
+9. **When asked to "run all tests," run them on the EC2 instance** (via the SSM pattern above,
+   or a script copied onto the instance/pod), not as a local `pytest` invocation tunneled
+   through SSM port-forwarding — that tunnel is unreliable in this environment (works
+   intermittently, then fails with a client-side "Plugin with name Port not found" error on
+   retries). A local `pytest --collect-only` or `python -m py_compile` for a quick
+   syntax/sanity check is fine; actually exercising the live assertions should happen on the
+   instance.
+
+---
+
 ## README maintenance rule
 
 Every module under `app/v1/` has a `README.md`. **Any time you add, remove, or change an endpoint, a request field, or a config-driven behaviour in a module, you must update that module's `README.md` to reflect the change.** The README must always stay in sync with the actual routes and schemas.
@@ -191,6 +324,23 @@ Every module under `app/v1/` has a `CLAUDE.md` (e.g. `app/v1/sonarqube/CLAUDE.md
 - Discovering quirks about the target service's API (e.g. a non-standard status code, a required header, a known broken endpoint) → add a note in the relevant section
 
 The module `CLAUDE.md` is the authoritative developer reference for that service. It must stay in sync with the actual code at all times.
+
+---
+
+## Workaround tracking rule
+
+Any time you introduce a workaround — a temporary fix that unblocks something now but has a
+known "real" fix pending elsewhere (an upstream library change, a Terraform/DNS change, a config
+fix in another repo) — file a GitHub issue in this repo (`gh issue create --repo
+devops-tashtiot/devops-api --label bug`) describing: what's broken, the workaround applied and
+where, and what the real fix would be (link the blocking PR/issue if one already exists, and
+cross-link back from that PR/issue with a comment if it's in a different repo). Do this
+immediately, not just as a note in a module's `CLAUDE.md` — the `CLAUDE.md` documents *how the
+system works today*, the issue tracks *that it still needs to be undone*.
+
+Ordinary bug fixes (wrong method name, missing binary, route-shadowing, a hardcoded value that
+should be looked up, etc.) don't need an issue — only fixes that are explicitly
+temporary/hacky and leave a "real fix" undone elsewhere.
 
 ---
 

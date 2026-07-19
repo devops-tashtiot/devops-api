@@ -7,6 +7,11 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 
 - *(bitbucket)* Sync must pick the syncable directory, not directories[0] ([f74a0cc](https://github.com/devops-tashtiot/devops-api/commit/f74a0ccb3e51b654071136e4338a7898d9d4c36f))
+- *(bitbucket)* Sync is unsupported by Bitbucket, return 501 not a fake success ([d14e2bd](https://github.com/devops-tashtiot/devops-api/commit/d14e2bd1f5b5c43459a56dd9357ec3d18f8ad7fd))
+
+### CI/CD
+
+- Also trigger the build+deploy pipeline on push to check-api ([b80a06b](https://github.com/devops-tashtiot/devops-api/commit/b80a06bda24e025484b2ef29264213ed09ddb698))
 
 ## [0.2.5] - 2026-07-12
 

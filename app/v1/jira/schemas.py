@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 from typing import Optional
 from tashtiot_apis_library import OperationRequest
 
@@ -26,8 +26,13 @@ class ProjectSpec(BaseModel):
         max_length=1000,
     )
 
-    admin_user: Optional[str] = Field(
-        default=None,
+    # Required, not Optional — Jira's project-creation API unconditionally requires a lead
+    # (a user, never a group): confirmed live that omitting it, and setting lead to a group
+    # name, both get an identical 400 "You must specify a valid project lead." Unlike
+    # Bitbucket/Confluence, a group can never substitute for this, so admin_group alone is
+    # not a valid way to create a Jira project.
+    admin_user: str = Field(
+        ...,
         description="Username to set as project lead and administrator",
         min_length=1,
         max_length=50,
@@ -36,17 +41,11 @@ class ProjectSpec(BaseModel):
 
     admin_group: Optional[str] = Field(
         default=None,
-        description="Group name to receive project administrator role",
+        description="Group name to additionally receive project administrator role",
         min_length=1,
         max_length=255,
         pattern=r"^[a-zA-Z0-9_\-]+$",
     )
-
-    @model_validator(mode="after")
-    def require_at_least_one_admin(self) -> "ProjectSpec":
-        if not self.admin_user and not self.admin_group:
-            raise ValueError("Provide at least one of admin_user or admin_group")
-        return self
 
 
 class JiraProjectRequest(OperationRequest):

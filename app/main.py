@@ -15,7 +15,11 @@ from .v1.sonarqube.routes import get_v1_sonarqube_router
 from .v1.sonarqube.conf import config as sonarqube_config
 from .v1.jira.routes import get_v1_jira_router
 def create_app() -> FastAPI:
-    app = general_create_app()
+    # enable_auth wires the library's global AuthMiddleware, which protects every route
+    # (except docs/metrics/health/probes) once AUTH_ENABLED=true and one AUTH_* verification
+    # material is also set. With AUTH_ENABLED unset/false (the default), the app boots open,
+    # same as before this flag existed. See app/v1/auth/CLAUDE.md.
+    app = general_create_app(enable_auth=True)
     
     # Configure external services objects
     if global_config.ARTIFACTORY_ENABLE_API:
@@ -48,6 +52,7 @@ def create_app() -> FastAPI:
             repo_slug=global_config.SONARQUBE_AAS_REPO_SLUG,
             default_ref=sonarqube_config.SONARQUBE_GITOPS_DEFAULT_BRANCH,
             ssh_key_file_path=global_config.GIT_SSH_KEY_PATH,
+            ssh_port=global_config.GIT_SSH_PORT,
         )
         app.include_router(get_v1_sonarqube_router(sonarqube_git))
 
@@ -67,6 +72,7 @@ def create_app() -> FastAPI:
             repo_slug=global_config.ARGOCD_AAS_REPO_SLUG,
             default_ref=argocd_config.ARGOCD_GITOPS_DEFAULT_BRANCH,
             ssh_key_file_path=global_config.GIT_SSH_KEY_PATH,
+            ssh_port=global_config.GIT_SSH_PORT,
         )
         app.include_router(get_v1_argocd_router(
             git,

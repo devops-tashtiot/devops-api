@@ -2,7 +2,6 @@ name: Build & Publish Docker Image
 
 on:
   push:
-    branches: [master]
 
 permissions:
   contents: write
@@ -20,7 +19,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      # master gets a real semver release (git-cliff bump + tag + changelog); every other
+      # branch (e.g. check-api, used for verifying fixes against the live cluster before they
+      # reach master) gets a unique per-push tag instead. Reusing git-cliff's semver bump on a
+      # branch that shares tag history with master causes silent tag collisions — a branch
+      # build can compute the same "next version" master already used, which then overwrites
+      # that tag's image content in GHCR while the git tag / devtools-definition value stays
+      # unchanged, so nothing observable tells you the running pod is now ambiguous. A SHA-based
+      # tag can never collide with anything, on any branch, ever.
       - name: Bump version & generate changelog (git-cliff)
+        if: github.ref_name == 'master'
         uses: orhun/git-cliff-action@v4
         id: git-cliff
         with:
@@ -31,13 +39,29 @@ jobs:
           GITHUB_REPO: ${{ github.repository }}
 
       - name: Install git-cliff CLI
+        if: github.ref_name == 'master'
         uses: taiki-e/install-action@git-cliff
 
       - name: Determine release version
         id: version
-        run: echo "value=$(git-cliff --config cliff.toml --bumped-version)" >> "$GITHUB_OUTPUT"
+        run: |
+          IMAGE="${{ env.IMAGE_NAME }}"
+          if [ "${{ github.ref_name }}" = "master" ]; then
+            VALUE="$(git-cliff --config cliff.toml --bumped-version)"
+            TAGS="$(printf '%s:%s\n%s:latest' "${IMAGE}" "${VALUE}" "${IMAGE}")"
+          else
+            VALUE="${{ github.ref_name }}-$(git rev-parse --short HEAD)"
+            TAGS="$(printf '%s:%s' "${IMAGE}" "${VALUE}")"
+          fi
+          echo "value=${VALUE}" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<TAGS_EOF"
+            echo "${TAGS}"
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Commit changelog and tag release
+        if: github.ref_name == 'master'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -61,14 +85,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # :latest always tracks master only — a check-api build must never become the image
+      # anything defaulting to :latest would pull.
       - name: Build and push image
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.value }}
-            ${{ env.IMAGE_NAME }}:latest
+          tags: ${{ steps.version.outputs.tags }}
 
       - name: Bump image tag in devtools-definition
         env:

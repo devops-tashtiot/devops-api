@@ -111,8 +111,6 @@ class ApplicationCluster(BaseModel):
 
 
 class ClusterSecretSpec(BaseModel):
-    username: str = Field(..., description="ArgoCD username", min_length=1)
-    password: str = Field(..., description="ArgoCD password", min_length=1)
     chosen_name: str = Field(
         ...,
         description="Prefix for the ArgoCD app name — final name will be {chosen_name}-cluster-secret",
@@ -135,8 +133,6 @@ class ClusterSecretSpec(BaseModel):
 
 
 class ClusterSecretUpdateSpec(BaseModel):
-    username: str = Field(..., description="ArgoCD username", min_length=1)
-    password: str = Field(..., description="ArgoCD password", min_length=1)
     application_clusters: list[ApplicationCluster] = Field(
         ...,
         description="Updated list of clusters for the cluster secret",
@@ -145,8 +141,6 @@ class ClusterSecretUpdateSpec(BaseModel):
 
 
 class ClusterSecretIdentifier(BaseModel):
-    username: str = Field(..., description="ArgoCD username", min_length=1)
-    password: str = Field(..., description="ArgoCD password", min_length=1)
     app_name: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
     chosen_name: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
 

@@ -24,12 +24,12 @@ Passed into `get_v1_jira_router(jira_client)` at startup — no per-request reco
 ## Project create flow (POST /)
 
 ```
-create_project  (sets lead=admin_user when admin_user is provided)
-  → assign_project_admin_user  [if admin_user set]
+create_project  (always sets lead=admin_user — Jira requires it)
+  → assign_project_admin_user  (always — admin_user is required)
   → assign_project_admin_group [if admin_group set]
 ```
 
-`admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided.
+`admin_user` is required (see below); `admin_group` is optional and additional.
 
 On unexpected failure: rollback via `delete_project`.
 
@@ -42,6 +42,20 @@ POST /rest/api/latest/project
 Body: {"key": key, "name": name, "description": description, "projectTypeKey": "software"[, "lead": admin_user]}
 → 201
 ```
+
+**`admin_user` is required, unlike Bitbucket/Confluence.** Confirmed live, three ways, that
+Jira's project creation unconditionally requires `lead` to be a real **user** — there is no
+way to satisfy it with a group, and no way to omit it:
+1. Omitting `lead` entirely → `400 {"errors":{"projectLead":"You must specify a valid project lead."}}`
+2. `admin_group`-only (no `lead` set) → identical `400`
+3. Setting `lead` to a **group name** directly (e.g. `"lead":"devops-tashtiot"`) → identical `400`
+
+Unlike Bitbucket/Confluence (where "admin" is purely a permission grant, not an ownership
+field), Jira's project model has a mandatory lead-user concept that a group can never
+substitute for. `ProjectSpec.admin_user` is therefore a required field (not `Optional`, no
+"at least one of admin_user/admin_group" validator like the other modules) — `admin_group` is
+optional and, when given, is granted the same project-admin role *in addition to* the
+required lead user.
 
 ### Delete project — `DELETE /rest/api/latest/project/{key}`
 
@@ -94,19 +108,25 @@ account — `ADMINISTER: true` alone gets a 403 "Client must be authenticated as
 administrator"; the account needs `SYSTEM_ADMIN: true` (`GET /rest/api/2/mypermissions`),
 normally granted via the `jira-system-administrators` group.
 
-### Sync user directory — `POST /rest/crowd/latest/directory/{id}/synchronise`
+### Sync user directory — unsupported, `sync_user_directory` always raises `501`
 
-```
-POST /rest/crowd/latest/directory/{id}/synchronise
-Header: Accept: application/json
-→ id is parsed from the first listed directory's links[0].href, not a response "id" field
-   (see above — no such field exists)
-```
+Jira has no supported way to manually trigger a directory sync on demand. Confirmed live, two
+ways, before landing on `501`:
 
-Note: British spelling (`synchronise`, not `sync`) — inferred from the shared Crowd-embedded
-REST resource with Confluence (same convention there), not independently confirmed by firing
-this specific POST against live Jira (a state-changing call, not exercised during
-verification — only the `GET` was).
+1. The old code picked `directories[0]`, which on a real instance is the built-in "Jira
+   Internal Directory" (id `1`), not the actual LDAP/AD directory that would ever need syncing
+   (id `10000` here) — directory order in the list isn't guaranteed to put the external one
+   first, so this was already picking the wrong directory.
+2. Even against the *correct* directory id, `POST /rest/crowd/latest/directory/10000/
+   synchronise` still 404s: `{"message":"null for uri: .../directory/10000/synchronise",
+   "status-code":404}`.
+
+This is the identical finding already documented for Bitbucket and Confluence
+(`app/v1/bitbucket/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`) — same underlying Atlassian
+Crowd-embedded module, same missing REST trigger, now independently confirmed on Jira too
+rather than just assumed-by-analogy. `sync_user_directory` therefore raises
+`HTTPException(501, ...)` unconditionally, without calling Jira at all, matching the pattern
+used by the other two modules for the identical situation.
 
 ## Schema — `ProjectSpec`
 
@@ -115,10 +135,11 @@ verification — only the `GET` was).
 | `key` | `str` | required; `^[A-Z][A-Z0-9]+$`; max 10 chars |
 | `name` | `str` | required; max 255 chars |
 | `description` | `str` | required; max 1000 chars |
-| `admin_user` | `Optional[str]` | `^[a-z0-9_\-]+$`; max 50 chars |
+| `admin_user` | `str` (required) | `^[a-z0-9_\-]+$`; max 50 chars |
 | `admin_group` | `Optional[str]` | `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 
-Model validator: at least one of `admin_user` / `admin_group` must be provided.
+No cross-field validator — `admin_user` is required on its own (see "Create project" above
+for why Jira, unlike Bitbucket/Confluence, can't accept a group in place of a lead user).
 
 ## Config fields (`conf.py`)
 

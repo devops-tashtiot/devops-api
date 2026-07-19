@@ -193,9 +193,10 @@ class DevopsStaticSettings(BaseSettings):
         description="Path to the SSH private key used by the Git connector",
         default="/etc/.ssh/private_key",
     )
-    GIT_SSH_PORT: str = Field(
-        description="SSH Port used by the Git connector",
-        default="7999",
+
+    GIT_SSH_PORT: int = Field(
+        description="SSH port for the Git connector (Bitbucket's real SSH port on this deployment; the library previously hardcoded 7995, which isn't reachable)",
+        default=7999,
     )
 
 #======================================================general=============================================    

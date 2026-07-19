@@ -141,15 +141,21 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ### Schemas
 
-Auth fields (`token` vs `argocd_username`+`argocd_password`) are mutually exclusive — exactly one mode must be supplied. Validator: `_validate_argocd_auth`.
+Cluster-secret auth is a single required `token` field — an ArgoCD API token for the target
+`{app_name}` instance. (Earlier docs here described a mutually-exclusive `token` vs
+`argocd_username`+`argocd_password` mode with a `_validate_argocd_auth` validator; that never
+matched the actual code, which always required `username`+`password` only, and those in turn
+were passed to `ArgoCD.from_credentials()` — a method that doesn't exist in the pinned
+`tashtiot-apis-library`. Fixed 2026-07-14 by switching to the library's real constructor,
+`ArgoCD(base_url, api_key, timeout)`, which is token-based from the start.)
 
 | Schema | Fields |
 |---|---|
 | `ConsumerConfigSpec` | `name` (`[a-zA-Z0-9_\-]`, 1-255), `environment` (from `ARGOCD_ALLOWED_ENVS`), `size` (from `ARGOCD_ALLOWED_SIZES`), `include_resources` (list from `ARGOCD_ALLOWED_RESOURCES`, min 1), `ad_admin_group` (`[a-zA-Z0-9_\-]`, 1-255) |
-| `ClusterSecretSpec` | `token` (optional), `argocd_username` (optional), `argocd_password` (optional) — one mode required; `chosen_name` (`[a-zA-Z0-9_\-]`, 1-255), `app_name` (`[a-zA-Z0-9_\-]`, 1-255), `application_clusters` (list of `ApplicationCluster`, min 1) |
-| `ApplicationCluster` | `name` (default `"openshift"`), `namespace` (1-1000), `address` (cluster API URL, 1-2048), `token` (service account token) |
-| `ClusterSecretUpdateSpec` | `token` (optional), `argocd_username` (optional), `argocd_password` (optional) — one mode required; `application_clusters` |
-| `ClusterSecretIdentifier` | `token` (optional), `argocd_username` (optional), `argocd_password` (optional) — one mode required; `app_name`, `chosen_name` |
+| `ClusterSecretSpec` | `token` (required, ArgoCD API token), `chosen_name` (`[a-zA-Z0-9_\-]`, 1-255), `app_name` (`[a-zA-Z0-9_\-]`, 1-255), `application_clusters` (list of `ApplicationCluster`, min 1) |
+| `ApplicationCluster` | `name` (default `"openshift"`), `namespace` (1-1000), `address` (cluster API URL, 1-2048), `token` (service account token — unrelated to the ArgoCD API token above, this is the *target Kubernetes cluster's* SA token) |
+| `ClusterSecretUpdateSpec` | `token` (required, ArgoCD API token), `application_clusters` |
+| `ClusterSecretIdentifier` | `token` (required, ArgoCD API token), `app_name`, `chosen_name` |
 
 ### Endpoints
 | Method | Path | Body/Params | Description |

@@ -40,7 +40,7 @@ class SonarQubeConsumerSpec(BaseModel):
         return self
     size: SonarQubeSizeEnum = Field(
         default=SonarQubeSizeEnum.default,
-        description="Instance size — 'default' omits the key from config.yaml; 'medium' and 'large' are written explicitly",
+        description="Instance size — 'default' omits the key from config.yaml; 'medium' and 'big' are written explicitly",
     )
 
 
@@ -54,7 +54,7 @@ class SonarQubeConsumerUpdateSpec(BaseModel):
     )
     size: SonarQubeSizeEnum = Field(
         default=SonarQubeSizeEnum.default,
-        description="Instance size — 'default' omits the key from config.yaml",
+        description="Instance size — 'default' omits the key from config.yaml; 'medium' and 'big' are written explicitly",
     )
 
     @model_validator(mode="after")

@@ -12,8 +12,8 @@ from app.v1.argocd.conf import config
 from app.global_conf import global_config
 
 VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
-VALID_SIZE = config.ARGOCD_ALLOWED_SIZES[0]
-VALID_RESOURCE = config.ARGOCD_ALLOWED_RESOURCES[0]
+VALID_SIZE = global_config.ARGOCD_ALLOWED_SIZES[0]
+VALID_RESOURCE = global_config.ARGOCD_ALLOWED_RESOURCES[0]
 
 VALID_CLUSTER_DATA = {
     "name": "openshift",
@@ -104,8 +104,6 @@ class TestApplicationCluster:
 class TestClusterSecretSpec:
     def _base(self):
         return {
-            "username": "admin",
-            "password": "pass",
             "chosen_name": "nati",
             "app_name": "netanel",
             "application_clusters": [VALID_CLUSTER_DATA],
@@ -114,14 +112,6 @@ class TestClusterSecretSpec:
     def test_valid_payload(self):
         spec = ClusterSecretSpec(**self._base())
         assert spec.app_name == "netanel"
-
-    def test_empty_username_raises(self):
-        with pytest.raises(ValidationError):
-            ClusterSecretSpec(**{**self._base(), "username": ""})
-
-    def test_empty_password_raises(self):
-        with pytest.raises(ValidationError):
-            ClusterSecretSpec(**{**self._base(), "password": ""})
 
     def test_empty_application_clusters_raises(self):
         with pytest.raises(ValidationError):
@@ -143,34 +133,28 @@ class TestClusterSecretSpec:
 class TestClusterSecretUpdateSpec:
     def test_valid_payload(self):
         spec = ClusterSecretUpdateSpec(
-            username="admin",
-            password="pass",
             application_clusters=[VALID_CLUSTER_DATA],
         )
-        assert spec.username == "admin"
+        assert len(spec.application_clusters) == 1
 
     def test_empty_clusters_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretUpdateSpec(username="admin", password="pass", application_clusters=[])
-
-    def test_empty_username_raises(self):
-        with pytest.raises(ValidationError):
-            ClusterSecretUpdateSpec(username="", password="pass", application_clusters=[VALID_CLUSTER_DATA])
+            ClusterSecretUpdateSpec(application_clusters=[])
 
 
 class TestClusterSecretIdentifier:
     def test_valid(self):
-        spec = ClusterSecretIdentifier(username="admin", password="pass", app_name="app", chosen_name="nati")
+        spec = ClusterSecretIdentifier(app_name="app", chosen_name="nati")
         assert spec.app_name == "app"
 
     def test_invalid_app_name_pattern_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(username="admin", password="pass", app_name="bad name!", chosen_name="nati")
+            ClusterSecretIdentifier(app_name="bad name!", chosen_name="nati")
 
     def test_invalid_chosen_name_pattern_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(username="admin", password="pass", app_name="app", chosen_name="bad!")
+            ClusterSecretIdentifier(app_name="app", chosen_name="bad!")
 
     def test_empty_app_name_raises(self):
         with pytest.raises(ValidationError):
-            ClusterSecretIdentifier(username="admin", password="pass", app_name="", chosen_name="nati")
+            ClusterSecretIdentifier(app_name="", chosen_name="nati")

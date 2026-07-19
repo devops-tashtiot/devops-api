@@ -20,7 +20,9 @@ VALID_USER_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {"key": "MYPROJ", "name": "My Project", "description": "A test project", "admin_user": "admin"},
 }
-VALID_GROUP_PAYLOAD = {
+# Jira unconditionally requires a lead (a user, never a group) to create a project —
+# confirmed live, see app/v1/jira/CLAUDE.md. admin_group alone is therefore invalid input.
+GROUP_ONLY_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {"key": "GRPPROJ", "name": "Group Project", "description": "A group project", "admin_group": "dev-team"},
 }
@@ -38,10 +40,9 @@ def test_create_project_with_user_returns_200(client):
     assert response.json()["status"] == "successful"
 
 
-def test_create_project_with_group_returns_200(client):
-    response = client.post(f"{PREFIX}/", json=VALID_GROUP_PAYLOAD)
-    assert response.status_code == 200
-    assert response.json()["status"] == "successful"
+def test_create_project_group_only_returns_422(client):
+    response = client.post(f"{PREFIX}/", json=GROUP_ONLY_PAYLOAD)
+    assert response.status_code == 422
 
 
 def test_create_project_with_both_returns_200(client):
@@ -58,12 +59,6 @@ def test_create_project_calls_post_with_correct_endpoint(client, mock_jira_clien
 
 def test_create_project_with_user_assigns_role(client, mock_jira_client):
     client.post(f"{PREFIX}/", json=VALID_USER_PAYLOAD)
-    post_endpoints = [c.args[0] for c in mock_jira_client.post.call_args_list]
-    assert any("role" in ep for ep in post_endpoints)
-
-
-def test_create_project_with_group_assigns_role(client, mock_jira_client):
-    client.post(f"{PREFIX}/", json=VALID_GROUP_PAYLOAD)
     post_endpoints = [c.args[0] for c in mock_jira_client.post.call_args_list]
     assert any("role" in ep for ep in post_endpoints)
 
@@ -134,41 +129,13 @@ def test_list_user_dirs_returns_200(mock_jira_client):
     assert response.json() == JIRA_DIRECTORIES_RESPONSE["directories"]
 
 
-def test_sync_user_dir_returns_200(mock_jira_client):
-    mock_jira_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value=JIRA_DIRECTORIES_RESPONSE)
-    ))
-    mock_jira_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+def test_sync_user_directory_returns_not_supported(mock_jira_client):
+    # Jira has no supported API to trigger a directory sync on demand — confirmed live (see
+    # app/v1/jira/CLAUDE.md). Must return 501 unconditionally, without calling Jira at all.
     app = FastAPI()
     app.include_router(get_v1_jira_router(mock_jira_client))
     c = TestClient(app)
     response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 200
-    assert response.json()["status"] == "successful"
-    sync_endpoint = mock_jira_client.post.call_args.args[0]
-    assert sync_endpoint.endswith("/directory/1/synchronise")
-
-
-def test_sync_user_dir_error_returns_error_response(mock_jira_client):
-    mock_jira_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value=JIRA_DIRECTORIES_RESPONSE)
-    ))
-    mock_jira_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
-    app = FastAPI()
-    app.include_router(get_v1_jira_router(mock_jira_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 404
+    assert response.status_code == 501
     assert response.json()["status"] == "Failed"
-
-
-def test_sync_user_dir_no_directories_returns_404(mock_jira_client):
-    mock_jira_client.get = AsyncMock(return_value=MagicMock(
-        status_code=200, text="", json=MagicMock(return_value={"directories": []})
-    ))
-    app = FastAPI()
-    app.include_router(get_v1_jira_router(mock_jira_client))
-    c = TestClient(app)
-    response = c.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 404
-    assert response.json()["status"] == "Failed"
+    mock_jira_client.post.assert_not_called()

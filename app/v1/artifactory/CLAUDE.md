@@ -176,6 +176,58 @@ docker compose -f ../docker-compose.artifactory.yaml up -d
 # Set ARTIFACTORY_API_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD in .env
 ```
 
+## Live-check findings (2026-07-14)
+
+Followed the same "check all APIs live against the cluster" procedure used for
+Bitbucket/Jira/SonarQube/ArgoCD. All 6 routes currently fail live, for two distinct,
+compounding reasons — neither is a bug in this module's request/response handling itself.
+
+### 1. `ARTIFACTORY_USERNAME`/`ARTIFACTORY_PASSWORD` are still the dev placeholder defaults
+
+`app/global_conf.py` defaults these to `svc-lcl-artifactory-api` / `sheker` (Hebrew for "lie" —
+clearly a dev-only placeholder). Unlike every other tool's credentials in
+`devtools-definition/devtools/devops-api/values.yaml` (which overrides `BITBUCKET_*`,
+`JIRA_*`, etc. with real values), **`ARTIFACTORY_USERNAME`/`ARTIFACTORY_PASSWORD` are never
+overridden there at all** — confirmed via `grep`, no match. The live deployment is
+authenticating against the real Artifactory with fake credentials. Every route that calls
+Artifactory returns `401` with `"Exception in Artifactory. HTTP 401 Unauthorized"`.
+
+### 2. Even with real credentials, Artifactory's Access API rejects Basic auth entirely
+
+This is the deeper, more important finding — fixing (1) alone will not make this module work.
+Confirmed live, `kubectl exec`-ing directly into `artifactory-0` and calling `localhost:8082`
+(bypassing all routing/Cloudflare/TLS, using the real admin password from
+`/devtools/admin/password`):
+
+```
+GET  http://localhost:8082/artifactory/api/repositories        (classic API) → 200, real data
+GET  http://localhost:8082/access/api/v1/projects/{key}        (Access API)  → 401 Unsupported authentication method Basic
+POST http://localhost:8082/access/api/v1/tokens                (Access API)  → 401 Unsupported authentication method Basic
+```
+
+**Basic auth works on the classic `/artifactory/api/*` REST API but is rejected outright on
+every `/access/api/v1/*` endpoint** — including the token-minting endpoint itself, so there is
+no way to bootstrap a Bearer token via Basic auth against this specific deployment either. This
+module's entire design (`main.py` builds one `BaseAPI` client with `auth=(username, password)`,
+same pattern as Bitbucket/Confluence/Jira/SonarQube) assumes Basic auth works against
+`ARTIFACTORY_ENDPOINT` (`/access/api/v1`) — that assumption is wrong for this Artifactory
+instance/version, independent of which credentials are used.
+
+**Not yet resolved — needs a real design decision, not just a config fix:**
+- Real fix likely requires switching this module to Bearer-token auth against the Access API —
+  e.g. a long-lived Identity Token generated once through Artifactory's own Admin UI (User
+  Profile → Generate Identity Token), stored in SSM the same way other secrets are, with
+  `operations.py`'s `_handle_response`/client construction changed to send
+  `Authorization: Bearer <token>` instead of Basic auth for this module specifically. Whether
+  Artifactory has a platform-level toggle to re-enable Basic auth on the Access API instead
+  (some JFrog Platform versions expose this under Administration → Access Tokens) has not been
+  checked — worth investigating as a possibly simpler alternative before committing to a token
+  rework.
+- The `ARTIFACTORY_USERNAME`/`ARTIFACTORY_PASSWORD` placeholder-credentials gap in
+  `devtools-definition` should be fixed regardless (real credentials, wired the same way as the
+  other tools) — necessary either way, just not sufficient on its own until (2) is also
+  resolved.
+
 ## Testing
 
 Tests mock the injected `artifactory_client` via `MagicMock` / `AsyncMock`.  

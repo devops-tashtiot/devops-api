@@ -3,7 +3,7 @@ import base64
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceImportUploadSpec, SpaceSpec, ConfluenceSpaceRequest, ConfluencePluginInstallRequest, ConfluencePluginUploadRequest, ConfluenceSpaceExportRequest, ConfluenceSpaceImportRequest, ConfluenceSpaceImportUploadRequest
+from .schemas import PluginInstallSpec, PluginUploadSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec, ConfluenceSpaceRequest, ConfluencePluginInstallRequest, ConfluencePluginUploadRequest, ConfluenceSpaceExportRequest, ConfluenceSpaceImportRequest
 from typing import Any
 from .conf import config
 from .operations import (
@@ -15,8 +15,8 @@ from .operations import (
     get_upm_token,
     install_plugin,
     uninstall_plugin,
-    list_user_directories,
-    sync_user_directory,
+    # list_user_directories,
+    # sync_user_directory,
     fetch_archive_from_s3,
     upload_archive_and_start_restore,
     poll_restore_job,
@@ -101,23 +101,6 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
 
-    @router.post("/space-import/upload", name="upload confluence space archive to MinIO", status_code=200)
-    async def upload_confluence_space_archive(payload: ConfluenceSpaceImportUploadRequest) -> JSONResponse:
-        try:
-            data_url = payload.spec.file_content
-            raw = data_url.split(",", 1)[1] if "," in data_url else data_url
-            await upload_archive_to_s3(base64.b64decode(raw), payload.spec.archive_name)
-            return JSONResponse({"status": "successful", "archive_name": payload.spec.archive_name})
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception uploading space archive. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
-            )
-
     @router.delete("/plugin/{plugin_key:path}", name="uninstall confluence plugin", status_code=200)
     async def uninstall_confluence_plugin(plugin_key: str) -> JSONResponse:
         try:
@@ -133,20 +116,20 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
 
-    @router.get("/user-dirs", name="list user directories", status_code=200)
-    async def get_user_directories() -> JSONResponse:
-        try:
-            dirs = await list_user_directories(confluence_client)
-            return JSONResponse(content=dirs)
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception in Confluence. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
-            )
+    # @router.get("/user-dirs", name="list user directories", status_code=200)
+    # async def get_user_directories() -> JSONResponse:
+    #     try:
+    #         dirs = await list_user_directories(confluence_client)
+    #         return JSONResponse(content=dirs)
+    #     except HTTPException as external_error:
+    #         return JSONResponse(
+    #             ExceptionResponse(
+    #                 stdout=f"Exception in Confluence. {external_error.detail}",
+    #                 status="Failed",
+    #                 status_code=external_error.status_code,
+    #             ).dict(),
+    #             status_code=external_error.status_code,
+    #         )
 
     @router.post("/space-export/", name="export space to S3", status_code=200)
     async def export_confluence_space(payload: ConfluenceSpaceExportRequest) -> JSONResponse:
@@ -183,19 +166,19 @@ def get_v1_confluence_router(confluence_client: Any):
                 status_code=external_error.status_code,
             )
 
-    @router.post("/user-dirs/sync", name="sync user directory", status_code=200)
-    async def sync_directory() -> JSONResponse:
-        try:
-            await sync_user_directory(confluence_client)
-            return SuccessResponse(status="successful")
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception in Confluence. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
-            )
+    # @router.post("/user-dirs/sync", name="sync user directory", status_code=200)
+    # async def sync_directory() -> JSONResponse:
+    #     try:
+    #         await sync_user_directory(confluence_client)
+    #         return SuccessResponse(status="successful")
+    #     except HTTPException as external_error:
+    #         return JSONResponse(
+    #             ExceptionResponse(
+    #                 stdout=f"Exception in Confluence. {external_error.detail}",
+    #                 status="Failed",
+    #                 status_code=external_error.status_code,
+    #             ).dict(),
+    #             status_code=external_error.status_code,
+    #         )
 
     return router

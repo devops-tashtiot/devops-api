@@ -3,6 +3,7 @@ import yaml
 from loguru import logger
 from fastapi import HTTPException
 from tashtiot_apis_library import Git, ArgoCD
+from tashtiot_apis_library.fastapi_template.security import SSOConfig, get_sso_token_client
 
 from .conf import config
 from .schemas import ApplicationCluster, ConsumerConfigSpec, ClusterSecretSpec, ClusterSecretUpdateSpec, ClusterSecretIdentifier
@@ -47,16 +48,28 @@ async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
         )
 
 
-async def _build_argocd(app_name: str, timeout: int, username: str, password: str) -> ArgoCD:
+# One SSOConfig for the whole module — get_sso_token_client() memoizes by object identity, so
+# reusing this same instance everywhere shares the token cache (and its refresh-before-expiry
+# behavior) across every call, rather than minting a fresh token per request.
+_argocd_sso_config = SSOConfig(
+    token_url=config.ARGOCD_SSO_TOKEN_URL,
+    client_id=config.ARGOCD_SSO_CLIENT_ID,
+    client_secret=config.ARGOCD_SSO_CLIENT_SECRET,
+    scope=config.ARGOCD_SSO_SCOPE,
+)
+
+
+async def _build_argocd(app_name: str, timeout: int) -> ArgoCD:
     base_url = f"https://{app_name}.argocd.{global_config.DOMAIN_SUFFIX}"
-    return await ArgoCD.from_credentials(base_url, timeout, username, password)
+    token = await get_sso_token_client(_argocd_sso_config).get_token()
+    return ArgoCD(base_url, token, timeout)
 
 
 async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec) -> None:
     for cluster in payload.application_clusters:
         await _check_cluster_permissions(cluster)
 
-    argocd = await _build_argocd(payload.app_name, argocd_timeout, payload.username, payload.password)
+    argocd = await _build_argocd(payload.app_name, argocd_timeout)
     helm_params = [{"name": "appName", "value": payload.app_name}]
     for i, cluster in enumerate(payload.application_clusters):
         prefix = f"applicationClusters[{i}]"
@@ -92,7 +105,7 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
 
     argo_app_name = f"{payload.chosen_name}-cluster-secret"
     try:
-        await argocd.create_app(app_body, validate=False)
+        await argocd.create_app(app_body, validate=False, wait=True)
         await argocd.sync(argo_app_name)
     except Exception as e:
         logger.error(f"Unexpected error creating cluster secret {argo_app_name}: {str(e)}")
@@ -100,7 +113,7 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
 
 
 async def delete_cluster_secret(argocd_timeout: int, params: ClusterSecretIdentifier) -> None:
-    argocd = await _build_argocd(params.app_name, argocd_timeout, params.username, params.password)
+    argocd = await _build_argocd(params.app_name, argocd_timeout)
     argo_app_name = f"{params.chosen_name}-cluster-secret"
     try:
         await argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE)
@@ -110,7 +123,7 @@ async def delete_cluster_secret(argocd_timeout: int, params: ClusterSecretIdenti
 
 
 async def edit_cluster_secret(argocd_timeout: int, app_name: str, chosen_name: str, payload: ClusterSecretUpdateSpec) -> None:
-    argocd = await _build_argocd(app_name, argocd_timeout, payload.username, payload.password)
+    argocd = await _build_argocd(app_name, argocd_timeout)
     argo_app_name = f"{chosen_name}-cluster-secret"
     helm_params = [{"name": "appName", "value": app_name}]
     for i, cluster in enumerate(payload.application_clusters):

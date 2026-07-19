@@ -1,14 +1,15 @@
 import asyncio
-from typing import Any
+import json
+import re
+from typing import Any, Awaitable, Callable, Optional
 
-import httpx
 from fastapi import HTTPException
 from loguru import logger
 
 from .conf import config
 from .schemas import PluginInstallSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec
 from app.global_conf import global_config
-from app.helpers import fetch_from_s3
+from app.helpers import fetch_from_s3, upload_to_s3
 
 
 def _handle_response(response):
@@ -43,6 +44,11 @@ async def create_space(confluence_client: Any, payload: SpaceSpec):
 
 
 async def delete_space(confluence_client: Any, key: str):
+    # Confluence's DELETE /space/{key} returns 2xx as soon as the deletion job is *accepted*,
+    # not once the space is actually gone — confirmed live: a GET immediately after a
+    # "successful" delete still returned the full space (200), and only 404'd ~20-30s later.
+    # Poll until the space actually 404s so callers get an honest "successful" only once it's
+    # true — otherwise an immediate recreate with the same key could race the background job.
     endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}"
     try:
         response = await confluence_client.delete(endpoint)
@@ -50,6 +56,18 @@ async def delete_space(confluence_client: Any, key: str):
     except Exception as e:
         logger.error(f"Unexpected error deleting space {key}: {str(e)}")
         raise
+
+    for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
+        check = await confluence_client.get(endpoint)
+        if check.status_code == 404:
+            logger.info(f"Space {key} deletion confirmed after {attempt + 1} poll(s)")
+            return
+        await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
+    raise HTTPException(
+        status_code=504,
+        detail=f"Space {key} delete was accepted but not confirmed within "
+        f"{config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
+    )
 
 
 async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):
@@ -100,7 +118,22 @@ async def get_upm_token(confluence_client: Any) -> str:
         raise HTTPException(status_code=502, detail=f"UPM token fetch failed: {e}")
 
 
+def _parse_upm_task_response(response) -> dict:
+    # UPM's file-upload response wraps its JSON in a literal <textarea>...</textarea> — a
+    # long-standing browser-compat quirk (avoids the browser offering a file-download dialog
+    # for a JSON response to a multipart POST). Confirmed live. Its own polling GET endpoint
+    # for the same task returns plain JSON with no such wrapper — handle both.
+    text = response.text.strip()
+    match = re.match(r"^<textarea>(.*)</textarea>$", text, re.DOTALL)
+    return json.loads(match.group(1) if match else text)
+
+
 async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_name: str, upm_token: str) -> None:
+    # UPM install is asynchronous — confirmed live: the initial POST returns 202 with
+    # "done": false and a polling link, not a completed result. Firing the POST and reporting
+    # success immediately (the old behavior) is a lie: a caller that then checks whether the
+    # plugin exists can hit a 404 because installation genuinely hasn't finished registering
+    # the OSGi bundle yet, even though devops-api already said "successful".
     endpoint = f"{config.CONFLUENCE_UPM_ENDPOINT}/?token={upm_token}"
     try:
         response = await confluence_client.post(
@@ -108,37 +141,68 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
             files={"plugin": (plugin_name, plugin_bytes, "application/octet-stream")},
         )
         _handle_response(response)
-        logger.info(f"Installed plugin {plugin_name} via UPM")
+        task = _parse_upm_task_response(response)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to install plugin {plugin_name}: {e}")
         raise HTTPException(status_code=502, detail=f"Plugin install failed: {e}")
 
+    task_url = task["links"]["self"]
+    for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
+        status = task["status"]
+        if status["done"]:
+            if "err" in status.get("contentType", ""):
+                error_msg = status.get("errorMessage", "Unknown UPM install error")
+                raise HTTPException(status_code=422, detail=f"Plugin install failed: {error_msg}")
+            logger.info(f"Installed plugin {plugin_name} via UPM after {attempt} poll(s)")
+            return
+        await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
+        try:
+            # Confirmed live: shortly after the task completes, GETting its "pending" URL
+            # 303-redirects to the permanent "tasks" URL (task["links"]["alternate"]) instead
+            # of continuing to serve it directly — immediately after install it doesn't
+            # redirect, so this is a real state transition, not a fluke. Must follow it or
+            # _handle_response treats the empty-bodied 303 itself as a failure.
+            response = await confluence_client.get(task_url, follow_redirects=True)
+            _handle_response(response)
+            task = _parse_upm_task_response(response)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error polling plugin install task for {plugin_name}: {e}")
+            raise HTTPException(status_code=502, detail=f"Error polling plugin install: {e}")
+    raise HTTPException(
+        status_code=504,
+        detail=f"Plugin install for {plugin_name} did not finish within "
+        f"{config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
+    )
 
-async def list_user_directories(confluence_client: Any) -> list[dict]:
-    endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory"
-    try:
-        response = await confluence_client.get(endpoint, headers={"Accept": "application/json"})
-        _handle_response(response)
-        return response.json()
-    except Exception as e:
-        logger.error(f"Unexpected error listing user directories: {str(e)}")
-        raise
+
+# async def list_user_directories(confluence_client: Any) -> list[dict]:
+#     endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory"
+#     try:
+#         response = await confluence_client.get(endpoint, headers={"Accept": "application/json"})
+#         _handle_response(response)
+#         return response.json()["directory"]
+#     except Exception as e:
+#         logger.error(f"Unexpected error listing user directories: {str(e)}")
+#         raise
 
 
-async def sync_user_directory(confluence_client: Any) -> None:
-    directories = await list_user_directories(confluence_client)
-    if not directories:
-        raise HTTPException(status_code=404, detail="No user directories found in Confluence")
-    directory_id = directories[0]["id"]
-    endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory/{directory_id}/synchronise"
-    try:
-        response = await confluence_client.post(endpoint, headers={"Accept": "application/json"})
-        _handle_response(response)
-    except Exception as e:
-        logger.error(f"Unexpected error syncing user directory {directory_id}: {str(e)}")
-        raise
+# async def sync_user_directory(confluence_client: Any) -> None:
+#     # Confluence has no supported way to manually trigger a directory sync — confirmed live
+#     # against a real AD-connector directory ID: POST /rest/crowd/latest/directory/{id}/synchronise
+#     # 404s (identical to Bitbucket, see app/v1/bitbucket/CLAUDE.md for the full investigation —
+#     # same underlying Atlassian Crowd-embedded module, same missing REST trigger, same undocumented
+#     # web-UI-only alternative that proved unreliable there). Directories sync on Confluence's own
+#     # automatic schedule; there is no reliable programmatic way to force one on demand.
+#     raise HTTPException(
+#         status_code=501,
+#         detail="Confluence has no supported API to trigger a user directory sync on demand. "
+#         "Directories sync on Confluence's own automatic schedule; use the admin UI to check "
+#         "status, not this endpoint to force one.",
+#     )
 
 
 async def uninstall_plugin(confluence_client: Any, plugin_key: str) -> None:
@@ -213,40 +277,12 @@ async def download_export(confluence_client: Any, job_id: int) -> bytes:
 
 async def upload_archive_to_s3(archive_bytes: bytes, archive_name: str) -> None:
     url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{archive_name}"
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-            response = await client.put(
-                url,
-                content=archive_bytes,
-                headers={"Content-Type": "application/zip"},
-            )
-            if response.status_code not in (200, 204):
-                raise HTTPException(status_code=502, detail=f"S3 upload returned {response.status_code}")
-            logger.info(f"Uploaded {archive_name} to S3 ({len(archive_bytes)} bytes)")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to upload archive {archive_name} to S3: {e}")
-        raise HTTPException(status_code=502, detail=f"S3 upload failed: {e}")
+    await upload_to_s3(url, archive_bytes, content_type="application/zip", label=archive_name)
 
 
 async def upload_plugin_to_s3(plugin_bytes: bytes, plugin_name: str) -> None:
     url = f"{global_config.CONFLUENCE_S3_PLUGINS_BASE_URL}/{plugin_name}"
-    try:
-        async with httpx.AsyncClient(verify=False, timeout=60.0) as client:
-            response = await client.put(
-                url,
-                content=plugin_bytes,
-                headers={"Content-Type": "application/java-archive"},
-            )
-            if response.status_code not in (200, 204):
-                raise HTTPException(status_code=502, detail=f"S3 upload returned {response.status_code}")
-            logger.info(f"Uploaded plugin {plugin_name} to S3 ({len(plugin_bytes)} bytes)")
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to upload plugin {plugin_name} to S3: {e}")
-        raise HTTPException(status_code=502, detail=f"S3 plugin upload failed: {e}")
+    await upload_to_s3(url, plugin_bytes, content_type="application/java-archive", label=plugin_name)
 
 
 

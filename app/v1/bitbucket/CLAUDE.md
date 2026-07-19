@@ -48,12 +48,40 @@ Body: {"key": key, "name": name, "description": description, "public": false}
 
 Projects are always created as private (`public: false` is hardcoded — the field is not exposed to callers).
 
-### Delete project — `DELETE /rest/api/latest/projects/{key}`
+### Delete project — cascades repo deletion first
+
+Bitbucket **refuses to delete a project that still contains repositories** — confirmed live:
+`DELETE /rest/api/latest/projects/{key}` on a project with any repo inside returns `409` with
+`{"errors":[{"message":"The project \"{key}\" cannot be deleted because it has repositories.",
+"exceptionName":"com.atlassian.bitbucket.IntegrityException"}]}`. This is unrelated to repo
+size — it happens even for a project containing a single empty repo.
+
+`delete_project` therefore lists all repos under the project first and deletes each one
+before deleting the project itself:
 
 ```
+GET    /rest/api/latest/projects/{key}/repos?start={start}&limit=100   (paginated via list_repos)
+  → {"values": [{"slug": ..., ...}], "isLastPage": bool, "nextPageStart": int}
+DELETE /rest/api/latest/projects/{key}/repos/{repo_slug}    for each repo
+  → 202 (Accepted — confirmed live this is genuinely asynchronous under the hood; Bitbucket
+     purges the underlying git data in the background)
 DELETE /rest/api/latest/projects/{key}
-→ 204
+  → 204
 ```
+
+No polling is needed between the repo deletes and the project delete: confirmed live with a
+real 200MB git repo — even though the repo delete itself returns `202`, an immediate `GET` on
+that repo already 404s, and the project delete that follows immediately succeeds with `204`.
+Bitbucket's REST-visible state (both repo and project) flips to "gone" synchronously with the
+API response; only the actual on-disk data purge happens asynchronously in the background.
+
+### Delete project — no lag on the project delete itself, confirmed at scale
+
+`DELETE /rest/api/latest/projects/{key}` (once the project has no repos left) returns `204`,
+and immediate `GET`s on the same project 404 right away — confirmed live with up to 20
+consecutive immediate polls, both against an empty project and one that previously held a
+200MB repo. Unlike Confluence's space delete (see `app/v1/confluence/CLAUDE.md`), there is no
+accepted-but-not-yet-gone race here, so `delete_project` does not poll for confirmation.
 
 ### Assign user admin — pre-check + `PUT`
 
@@ -99,27 +127,39 @@ products. Neither response includes an `id` field on each directory object; the 
 only exists embedded in `link[0].href` (e.g. `.../directory/32769` → `32769`), which is what
 `sync_user_directory` parses out.
 
-### Sync user directory — `POST /rest/crowd/latest/directory/{id}/synchronise`
+### Sync user directory — unsupported, `sync_user_directory` always raises `501`
 
-```
-POST /rest/crowd/latest/directory/{id}/synchronise
-Header: Accept: application/json
-→ id is parsed from href on the directory picked below, not a response "id" field
-   (see above — no such field exists in either the Crowd or native admin API)
-```
+Bitbucket Data Center has **no supported way to trigger a directory sync on demand**, at all.
+This was investigated thoroughly live against Bitbucket Data Center 10.2.2 before concluding
+that (see git history for the full back-and-forth):
 
-British spelling (`synchronise`, not `sync`) — confirmed live: the old `.../admin/
-user-directories/{id}/sync` path this used to call 404s; this corrected Crowd-based path
-returns 200 against a real AD-connector directory.
+1. `POST /rest/crowd/latest/directory/{id}/synchronise` — the path Jira/Confluence use
+   successfully for the same shared Crowd-embedded resource — **404s on Bitbucket even with
+   the correct connector directory ID**. Confirmed on a real AD-connector directory, not a
+   guess against the wrong directory.
+2. `POST /rest/api/1.0/admin/user-directories/{id}/sync` (the old, wrong path this code used
+   to call) also 404s with a real ID.
+3. The Bitbucket **web UI** does have a working "Synchronize" action, found by fetching the
+   admin console HTML directly: `POST /plugins/servlet/embedded-crowd/directories/sync?directoryId={id}`.
+   This is an internal servlet, not a documented/versioned REST endpoint. It accepts Basic
+   Auth and always returns `302` — but **that response is not a reliable success signal**:
+   - The first live test appeared to work (directory's `lastStartTime` advanced).
+   - Every subsequent call — verified independently via tight API polling (`currentStartTime`
+     never went non-zero, `lastStartTime` never advanced, over 90+ seconds) **and** by
+     visually checking the Bitbucket admin UI directly — produced **zero effect**, despite
+     an identical `302` response each time.
+   - Conclusion: the one apparent success coincided with Bitbucket's own internal automatic
+     sync schedule (`lastStartTime` values observed exactly ~30 minutes apart —
+     `9:11 → 9:41 → 10:11 → 10:41`), not with any manual trigger. The servlet likely
+     silently no-ops/throttles repeat requests with no way to tell from the response.
 
-**Directory selection — do not take `directories[0]` blindly.** The built-in internal
-directory (`"Bitbucket Internal Directory"`) is always listed first and cannot be synced —
-POSTing its ID to `.../synchronise` 404s against Bitbucket itself (confirmed live). Only
-connector/LDAP directories are syncable, and only those entries carry a `"synchronisation"`
-key in the list response — `sync_user_directory` picks the first directory that has that key,
-not the first directory in the array. If no directory has that key (single-tenant instance
-with no LDAP directory configured at all), it raises 404 rather than attempting a sync that
-would fail anyway.
+Building this into devops-api would report `"status": "successful"` on requests that almost
+always silently did nothing — worse than not having the feature. `sync_user_directory`
+therefore raises `HTTPException(501, ...)` unconditionally, without calling Bitbucket at all.
+`GET /user-dirs` is unaffected and still works correctly (see above) — only the sync/trigger
+side is unsupported. If Atlassian ever ships this (tracked publicly since 2014 in
+[BSERV-5108](https://jira.atlassian.com/browse/BSERV-5108), still open as of this writing),
+revisit this.
 
 ## Schema — `ProjectSpec`
 

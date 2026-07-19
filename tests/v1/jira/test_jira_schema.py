@@ -10,10 +10,12 @@ def test_valid_with_admin_user():
     assert spec.admin_group is None
 
 
-def test_valid_with_admin_group():
-    spec = ProjectSpec(key="MYPROJ", name="My Project", description="desc", admin_group="dev-team")
-    assert spec.admin_group == "dev-team"
-    assert spec.admin_user is None
+def test_admin_group_alone_raises():
+    # Jira's project-creation API unconditionally requires a lead (a user, never a group) —
+    # confirmed live (see app/v1/jira/CLAUDE.md). admin_user is therefore required, unlike
+    # Bitbucket/Confluence where "at least one of admin_user/admin_group" is enough.
+    with pytest.raises(ValidationError, match="admin_user"):
+        ProjectSpec(key="MYPROJ", name="My Project", description="desc", admin_group="dev-team")
 
 
 def test_valid_with_both():
@@ -23,7 +25,7 @@ def test_valid_with_both():
 
 
 def test_neither_admin_raises():
-    with pytest.raises(ValidationError, match="at least one"):
+    with pytest.raises(ValidationError, match="admin_user"):
         ProjectSpec(key="MYPROJ", name="My Project", description="desc")
 
 
@@ -63,5 +65,5 @@ def test_admin_user_invalid_chars_raises():
 
 
 def test_admin_group_valid_with_hyphens():
-    spec = ProjectSpec(key="MYPROJ", name="My Project", description="desc", admin_group="my-group-01")
+    spec = ProjectSpec(key="MYPROJ", name="My Project", description="desc", admin_user="admin", admin_group="my-group-01")
     assert spec.admin_group == "my-group-01"

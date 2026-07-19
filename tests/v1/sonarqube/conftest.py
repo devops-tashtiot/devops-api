@@ -20,7 +20,7 @@ def mock_sonar_client():
 def mock_git():
     git = MagicMock()
     git.add_file = AsyncMock(return_value=None)
-    git.update_file = AsyncMock(return_value=None)
+    git.modify_file = AsyncMock(return_value=None)
     git.delete_file = AsyncMock(return_value=None)
     return git
 

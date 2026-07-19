@@ -5,8 +5,8 @@ from app.global_conf import global_config
 
 PREFIX = config.API_PREFIX
 VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
-VALID_SIZE = config.ARGOCD_ALLOWED_SIZES[0]
-VALID_RESOURCE = config.ARGOCD_ALLOWED_RESOURCES[0]
+VALID_SIZE = global_config.ARGOCD_ALLOWED_SIZES[0]
+VALID_RESOURCE = global_config.ARGOCD_ALLOWED_RESOURCES[0]
 
 VALID_METADATA = {
     "project": "test-project",
@@ -37,8 +37,6 @@ VALID_CLUSTER = {
 VALID_CLUSTER_SECRET_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {
-        "username": "admin",
-        "password": "pass",
         "chosen_name": "nati",
         "app_name": "netanel",
         "application_clusters": [VALID_CLUSTER],
@@ -48,8 +46,6 @@ VALID_CLUSTER_SECRET_PAYLOAD = {
 VALID_CLUSTER_UPDATE_PAYLOAD = {
     "metadata": VALID_METADATA,
     "spec": {
-        "username": "admin",
-        "password": "pass",
         "application_clusters": [VALID_CLUSTER],
     },
 }
@@ -75,6 +71,30 @@ def test_get_include_resources_returns_200(client):
 def test_get_include_resources_returns_nonempty_list(client):
     data = client.get(f"{PREFIX}/include-resources").json()
     assert isinstance(data, list) and len(data) > 0
+
+
+# GET /rbac-resources
+
+def test_get_rbac_resources_returns_200(client):
+    assert client.get(f"{PREFIX}/rbac-resources").status_code == 200
+
+
+def test_get_rbac_resources_returns_nonempty_list(client):
+    data = client.get(f"{PREFIX}/rbac-resources").json()
+    assert isinstance(data, list) and len(data) > 0
+    assert "applications" in data
+
+
+# GET /rbac-actions
+
+def test_get_rbac_actions_returns_200(client):
+    assert client.get(f"{PREFIX}/rbac-actions").status_code == 200
+
+
+def test_get_rbac_actions_returns_nonempty_list(client):
+    data = client.get(f"{PREFIX}/rbac-actions").json()
+    assert isinstance(data, list) and len(data) > 0
+    assert "get" in data
 
 
 # GET /environments
@@ -188,7 +208,7 @@ def test_delete_cluster_secret_returns_200(client):
     with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
         response = client.delete(
             f"{PREFIX}/cluster-secret",
-            params={"username": "admin", "password": "pass", "app_name": "netanel", "chosen_name": "nati"},
+            params={"app_name": "netanel", "chosen_name": "nati"},
         )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
@@ -200,7 +220,7 @@ def test_delete_cluster_secret_calls_delete_app_once(client):
     with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
         client.delete(
             f"{PREFIX}/cluster-secret",
-            params={"username": "admin", "password": "pass", "app_name": "netanel", "chosen_name": "nati"},
+            params={"app_name": "netanel", "chosen_name": "nati"},
         )
     assert mock_argocd.delete_app.call_count == 1
 
