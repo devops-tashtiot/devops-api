@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] - 2026-07-20
+
+### Bug Fixes
+
+- *(bitbucket)* Implement missing admin pre-check, fix silent-failure rollback path ([cf13c2b](https://github.com/devops-tashtiot/devops-api/commit/cf13c2b4d4fa1ad4885174d8beba28c44b70c830))
+
 ## [0.3.1] - 2026-07-20
 
 ### Bug Fixes
