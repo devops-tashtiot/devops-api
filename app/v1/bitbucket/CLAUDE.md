@@ -32,9 +32,22 @@ create_project
   → assign_admin_group_permission [if admin_group set]
 ```
 
-`admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided.
+`admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided, and
+both can be set together (assigns both a user and a group admin).
 
-On unexpected failure after project creation: rollback via `delete_project(key)`.
+**2026-07-20 — `validate_admin_principals` is now actually implemented** (`operations.py`).
+This flow diagram used to describe an aspirational design with no code behind it — confirmed via
+`grep` across the module, zero hits outside this doc. Found while writing additional test
+coverage for this module; now matches reality: `_assert_user_exists`/`_assert_group_exists` call
+`GET .../admin/users?filter=`/`GET .../admin/groups?filter=` and raise `404` if the `values`
+array comes back empty, *before* `create_project` runs.
+
+On unexpected failure after project creation: rollback via `delete_project(key)`. The rollback
+itself is wrapped in its own try/except — a failed rollback is logged, not raised, so it can
+never mask or crash past the original error. The route always returns a proper `500`
+`ExceptionResponse` on this path now; it used to fall through with no `return` at all (the
+existing unit test for this path never asserted on the response, which is how that went
+unnoticed until now).
 
 ## Bitbucket REST API calls
 

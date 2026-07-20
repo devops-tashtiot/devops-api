@@ -162,6 +162,52 @@ def test_create_assign_group_and_delete_project(bb, api):
 
 
 @pytest.mark.integration
+def test_create_project_with_nonexistent_admin_user_returns_404(bb, api):
+    # validate_admin_principals must reject a nonexistent admin_user before ever creating the
+    # project — confirms the pre-check documented in app/v1/bitbucket/CLAUDE.md is real, not
+    # just aspirational.
+    _delete_project_if_exists(bb, PROJECT_KEY)
+    assert not _project_exists(bb, PROJECT_KEY)
+
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "End-to-end test project (nonexistent admin_user)",
+            "public": False,
+            "admin_user": "nonexistentusr",
+        },
+    })
+    assert r.status_code == 404, r.text
+    assert r.json()["status"] == "Failed"
+
+    # the project must never have been created
+    assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
+def test_create_project_with_nonexistent_admin_group_returns_404(bb, api):
+    _delete_project_if_exists(bb, PROJECT_KEY)
+    assert not _project_exists(bb, PROJECT_KEY)
+
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "End-to-end test project (nonexistent admin_group)",
+            "public": False,
+            "admin_group": "nonexistent-group-999",
+        },
+    })
+    assert r.status_code == 404, r.text
+    assert r.json()["status"] == "Failed"
+
+    assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
 def test_delete_project_cascades_repo_deletion(bb, api):
     # Bitbucket refuses DELETE /projects/{key} with 409 IntegrityException whenever the
     # project still has a repo inside it (confirmed live — see app/v1/bitbucket/CLAUDE.md).

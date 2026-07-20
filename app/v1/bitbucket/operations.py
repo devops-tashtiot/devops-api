@@ -13,6 +13,41 @@ def _handle_response(response):
             detail = response.text
         raise HTTPException(status_code=response.status_code, detail=detail)
 
+async def _assert_user_exists(bitbucket_client: Any, admin_user: str):
+    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/users?filter={admin_user}"
+    try:
+        response = await bitbucket_client.get(endpoint)
+        _handle_response(response)
+        if not response.json().get("values"):
+            raise HTTPException(status_code=404, detail=f"User '{admin_user}' does not exist in Bitbucket")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error checking user {admin_user} exists: {str(e)}")
+        raise
+
+
+async def _assert_group_exists(bitbucket_client: Any, admin_group: str):
+    endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/groups?filter={admin_group}"
+    try:
+        response = await bitbucket_client.get(endpoint)
+        _handle_response(response)
+        if not response.json().get("values"):
+            raise HTTPException(status_code=404, detail=f"Group '{admin_group}' does not exist in Bitbucket")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error checking group {admin_group} exists: {str(e)}")
+        raise
+
+
+async def validate_admin_principals(bitbucket_client: Any, payload: ProjectSpec):
+    if payload.admin_user:
+        await _assert_user_exists(bitbucket_client, payload.admin_user)
+    if payload.admin_group:
+        await _assert_group_exists(bitbucket_client, payload.admin_group)
+
+
 async def create_project(bitbucket_client: Any, payload: ProjectSpec):
     key, name, description, endpoint = payload.key, payload.name, payload.description, f"{config.BITBUCKET_ENDPOINT}/projects"
     try:

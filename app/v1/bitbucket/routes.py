@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
 from .schemas import ProjectSpec, BitbucketProjectRequest
 from typing import Any
+from loguru import logger
 from .conf import config
 from .operations import (
     create_project,
@@ -11,6 +12,7 @@ from .operations import (
     assign_admin_group_permission,
     list_user_directories,
     sync_user_directory,
+    validate_admin_principals,
 )
 
 def get_v1_bitbucket_router(bitbucket_client: Any):
@@ -19,6 +21,7 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
     @router.post("/", name="create project", status_code=200)
     async def create_new_project(payload: BitbucketProjectRequest) -> JSONResponse:
         try:
+            await validate_admin_principals(bitbucket_client, payload.spec)
             await create_project(bitbucket_client, payload.spec)
             if payload.spec.admin_user:
                 await assign_admin_permission(bitbucket_client, payload.spec)
@@ -34,8 +37,19 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
                 ).dict(),
                 status_code=external_error.status_code
             )
-        except:
-            await delete_project(bitbucket_client, payload.spec.key)
+        except Exception as e:
+            try:
+                await delete_project(bitbucket_client, payload.spec.key)
+            except Exception as rollback_error:
+                logger.error(f"Rollback failed for project {payload.spec.key}: {rollback_error}")
+            return JSONResponse(
+                ExceptionResponse(
+                    stdout=f"Exception in Bitbucket. {str(e)}",
+                    status="Failed",
+                    status_code=500,
+                ).dict(),
+                status_code=500,
+            )
 
     @router.delete("/{key}", name="delete project", status_code=200)
     async def delete_existing_project(key: str) -> JSONResponse:
