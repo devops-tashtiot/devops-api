@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] - 2026-07-20
+
+### Bug Fixes
+
+- *(jira)* Validate admin_user/admin_group exist before create; remove dead chat/dns/haproxy modules ([ee73d20](https://github.com/devops-tashtiot/devops-api/commit/ee73d20fb14f3f4a2b63f29654bfe4881436e6d5))
+
 ## [0.3.3] - 2026-07-20
 
 ### Testing
