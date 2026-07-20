@@ -118,8 +118,10 @@ def test_delete_project_returns_200(client, mock_bitbucket_client):
 
 
 def test_delete_project_calls_delete_endpoint(client, mock_bitbucket_client):
+    # delete_project cascades: one delete per repo under the project (2, per the
+    # mock_bitbucket_client fixture), then the project itself — 3 total.
     client.delete(f"{PREFIX}/TEST")
-    assert mock_bitbucket_client.delete.call_count == 1
+    assert mock_bitbucket_client.delete.call_count == 3
     endpoint = mock_bitbucket_client.delete.call_args.args[0]
     assert "/projects/TEST" in endpoint
 

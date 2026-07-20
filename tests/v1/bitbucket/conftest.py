@@ -16,7 +16,7 @@ def mock_bitbucket_client():
     ok_get.status_code = 200
     ok_get.json = MagicMock(return_value={"values": [
         {"slug": "nati", "name": "nati"},
-        {"name": "devops-team"},
+        {"slug": "devops-team", "name": "devops-team"},
     ]})
     client.post = AsyncMock(return_value=ok)
     client.put = AsyncMock(return_value=ok)
