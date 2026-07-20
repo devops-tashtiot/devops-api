@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.3] - 2026-07-20
+
+### Testing
+
+- *(bitbucket)* Cover public field pass-through, schema boundaries, and permission idempotency ([6fe5bc7](https://github.com/devops-tashtiot/devops-api/commit/6fe5bc7a9b7e4a1df24374a933583139d60ee613))
+
 ## [0.3.2] - 2026-07-20
 
 ### Bug Fixes
