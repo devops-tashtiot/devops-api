@@ -39,6 +39,14 @@ def test_key_too_short_raises():
         ProjectSpec(key="A", name="My Project", description="desc", admin_user="admin")
 
 
+def test_key_two_chars_valid():
+    # The true regex minimum (^[A-Z][A-Z0-9]+$ needs a leading letter plus at least one more
+    # char) — min_length=1 alone would suggest a single char is enough, but it isn't; this
+    # pins down the actual boundary that succeeds.
+    spec = ProjectSpec(key="AB", name="My Project", description="desc", admin_user="admin")
+    assert spec.key == "AB"
+
+
 def test_key_too_long_raises():
     with pytest.raises(ValidationError):
         ProjectSpec(key="TOOLONGKEY123", name="My Project", description="desc", admin_user="admin")

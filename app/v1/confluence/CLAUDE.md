@@ -153,26 +153,6 @@ one.
 Global credentials (`CONFLUENCE_USERNAME`, `CONFLUENCE_PASSWORD`) and `CONFLUENCE_API_URL` live in `global_conf.py`.  
 S3 bucket URLs (`CONFLUENCE_S3_PLUGINS_BASE_URL`, `CONFLUENCE_S3_IMPORTS_BASE_URL`) also live in `global_conf.py`. Both point into the public **`platform-clients`** bucket (`confluence-plugins/` and `confluence-space-imports/` subfolders).
 
-## Local dev
-
-```bash
-docker compose -f ../docker-compose.confluence.yaml up -d
-# Confluence at http://localhost:8090  user: admin  pass: 12345678
-```
-
-Set in `.env`:
-```
-CONFLUENCE_API_URL=http://localhost:8090
-CONFLUENCE_USERNAME=admin
-CONFLUENCE_PASSWORD=12345678
-```
-
-MinIO (for plugins and space archives):
-```bash
-docker compose -f ../docker-compose.minio.yaml up -d
-# S3 API: http://localhost:9100   Console: http://localhost:9101
-```
-
 ## Testing
 
 Tests mock the injected `confluence_client` via `MagicMock` / `AsyncMock` — no real HTTP calls.  

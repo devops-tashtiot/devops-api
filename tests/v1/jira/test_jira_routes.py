@@ -82,6 +82,96 @@ def test_create_project_error_returns_error_response(mock_jira_client):
     assert response.json()["status"] == "Failed"
 
 
+def test_create_project_already_exists_returns_400(mock_jira_client):
+    conflict = MagicMock(status_code=400, text="")
+    conflict.json = MagicMock(return_value={"errorMessages": ["A project with that name already exists."]})
+    mock_jira_client.post = AsyncMock(return_value=conflict)
+
+    app = FastAPI()
+    app.include_router(get_v1_jira_router(mock_jira_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/", json=VALID_USER_PAYLOAD)
+
+    assert response.status_code == 400
+    assert response.json()["status"] == "Failed"
+    assert "already exists" in response.json()["stdout"]
+
+
+def test_create_project_already_exists_does_not_rollback(mock_jira_client):
+    conflict = MagicMock(status_code=400, text="")
+    conflict.json = MagicMock(return_value={"errorMessages": ["A project with that name already exists."]})
+    mock_jira_client.post = AsyncMock(return_value=conflict)
+
+    app = FastAPI()
+    app.include_router(get_v1_jira_router(mock_jira_client))
+    c = TestClient(app)
+    c.post(f"{PREFIX}/", json=VALID_USER_PAYLOAD)
+
+    assert mock_jira_client.post.call_count == 1
+    assert "/project" in mock_jira_client.post.call_args.args[0]
+    mock_jira_client.delete.assert_not_called()
+
+
+def test_create_project_nonexistent_admin_user_rejected_before_create(mock_jira_client):
+    # admin_user is already implicitly protected (create_project sets it as lead, and Jira
+    # rejects creation outright for a nonexistent one) — this explicit pre-check exists for a
+    # fast, specific failure before any write to Jira happens at all, matching admin_group's
+    # check. Confirm it actually runs first: create_project (POST) must never fire.
+    not_found = MagicMock(status_code=404, text="")
+    not_found.json = MagicMock(return_value={"errorMessages": ["The user named 'admin' does not exist"]})
+    mock_jira_client.get = AsyncMock(return_value=not_found)
+
+    app = FastAPI()
+    app.include_router(get_v1_jira_router(mock_jira_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/", json=VALID_USER_PAYLOAD)
+
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"
+    assert "does not exist" in response.json()["stdout"]
+    mock_jira_client.post.assert_not_called()
+
+
+def test_create_project_nonexistent_admin_group_rejected_before_create(mock_jira_client):
+    # The group-existence pre-check must run before create_project — a bad admin_group should
+    # fail the whole request with nothing ever created, not create the project and then leave
+    # it orphaned when the later role-assignment call fails (the bug this pre-check fixes;
+    # confirmed live that Jira's role-assignment endpoint returns a clean 410 for a nonexistent
+    # group, which previously hit the except HTTPException branch — no rollback there at all).
+    not_found = MagicMock(status_code=404, text="")
+    not_found.json = MagicMock(return_value={"errorMessages": ["The group named 'dev-team' does not exist"]})
+    mock_jira_client.get = AsyncMock(return_value=not_found)
+
+    app = FastAPI()
+    app.include_router(get_v1_jira_router(mock_jira_client))
+    c = TestClient(app)
+    response = c.post(f"{PREFIX}/", json=VALID_BOTH_PAYLOAD)
+
+    assert response.status_code == 404
+    assert response.json()["status"] == "Failed"
+    assert "does not exist" in response.json()["stdout"]
+    mock_jira_client.post.assert_not_called()
+
+
+def test_create_project_group_assign_failure_triggers_rollback(mock_jira_client):
+    # Rollback fires only on the bare `except:` for an unexpected exception — e.g. create and
+    # admin_user role assignment both succeed, then admin_group role assignment crashes.
+    ok = MagicMock(status_code=200, text="")
+    mock_jira_client.post = AsyncMock(side_effect=[ok, ok, Exception("network error")])
+    mock_jira_client.delete = AsyncMock(return_value=ok)
+
+    app = FastAPI()
+    app.include_router(get_v1_jira_router(mock_jira_client))
+    c = TestClient(app)
+
+    response = c.post(f"{PREFIX}/", json=VALID_BOTH_PAYLOAD)
+
+    delete_endpoints = [call.args[0] for call in mock_jira_client.delete.call_args_list]
+    assert any("BTPROJ" in ep for ep in delete_endpoints)
+    assert response.status_code == 500
+    assert response.json()["status"] == "Failed"
+
+
 # --- delete project ---
 
 def test_delete_project_returns_200(client):

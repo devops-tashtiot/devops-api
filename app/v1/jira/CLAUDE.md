@@ -24,14 +24,46 @@ Passed into `get_v1_jira_router(jira_client)` at startup — no per-request reco
 ## Project create flow (POST /)
 
 ```
-create_project  (always sets lead=admin_user — Jira requires it)
+assert_user_exists                    (always — admin_user is required)
+assert_group_exists  [if admin_group set]
+  → create_project  (always sets lead=admin_user — Jira requires it)
   → assign_project_admin_user  (always — admin_user is required)
   → assign_project_admin_group [if admin_group set]
 ```
 
-`admin_user` is required (see below); `admin_group` is optional and additional.
+`admin_user` is required (see below); `admin_group` is optional and additional. Both are
+checked to exist in Jira *before* `create_project` runs at all.
 
-On unexpected failure: rollback via `delete_project`.
+**`assert_group_exists` pre-check (added after a live-confirmed orphan bug):** a nonexistent
+`admin_group` doesn't crash `assign_project_admin_group` — Jira's role-assignment endpoint
+returns a clean `410 Gone` for it, same as it does for a nonexistent user in the same call.
+That's an `HTTPException`, which hits the `except HTTPException` branch in `routes.py`, **not**
+the bare `except:` rollback path — and that branch never deletes anything. Confirmed live:
+created a real project with a valid `admin_user`, sent a nonexistent `admin_group`, got `410`,
+then checked directly — the project still existed, half-configured (created + admin_user
+assigned, no group role). `admin_group` is only ever touched by the later, separate
+role-assignment call, which is what exposes this. `assert_group_exists`
+(`GET /rest/api/latest/group?groupname={admin_group}` — exact lookup, genuine `404` if
+missing, unlike Bitbucket's filter-search endpoint which 200s with an empty list) now runs
+before `create_project`, so a bad group fails the whole request cleanly with nothing ever
+created — no rollback needed because there's nothing to roll back.
+
+**`assert_user_exists` pre-check:** unlike `admin_group`, `admin_user` was never actually
+exposed to the orphan bug above — `create_project` sets it as `lead` directly, and Jira
+rejects the entire creation for a nonexistent lead (confirmed live), so there's no window
+where a project exists without a valid lead. This check exists anyway, for a fast/specific
+failure before any write to Jira happens at all, and for symmetry with `assert_group_exists`
+and with Bitbucket's `validate_admin_principals` shape (`GET /rest/api/latest/user?username=
+{admin_user}` — same exact-lookup/genuine-404 behavior as the group endpoint).
+
+On unexpected failure: rollback via `delete_project`. The rollback itself is wrapped in its
+own try/except — a failed rollback is logged, not raised, so it can never mask or crash past
+the original error. The route always returns a proper `500` `ExceptionResponse` on this path
+now; it used to fall through with no `return` at all after the rollback delete, meaning a
+caller saw `200 null` for what was actually a failed-and-rolled-back create — same historical
+bug already fixed in `app/v1/bitbucket/routes.py` (see that module's `CLAUDE.md`), found here
+independently while adding rollback test coverage for Jira and confirming the response body,
+not just the delete call, on a live run.
 
 ## Jira REST API calls
 
@@ -149,16 +181,6 @@ for why Jira, unlike Bitbucket/Confluence, can't accept a group in place of a le
 | `JIRA_CROWD_ENDPOINT` | `/rest/crowd/latest` | Crowd REST API base path — used for user directory listing and sync |
 
 Global credentials (`JIRA_USERNAME`, `JIRA_PASSWORD`) and `JIRA_API_URL` live in `global_conf.py`.
-
-## Local dev
-
-```bash
-# No dedicated compose file — use an existing Jira Data Center or Server instance
-# Set in .env:
-JIRA_API_URL=http://localhost:8080
-JIRA_USERNAME=admin
-JIRA_PASSWORD=<password>
-```
 
 ## Testing
 

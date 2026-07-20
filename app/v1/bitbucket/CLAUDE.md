@@ -201,20 +201,6 @@ Model validator: at least one of `admin_user` / `admin_group` must be provided.
 
 Global credentials (`BITBUCKET_USERNAME`, `BITBUCKET_PASSWORD`) and `BITBUCKET_API_URL` live in `global_conf.py`.
 
-## Local dev
-
-```bash
-docker compose -f ../docker-compose.bitbucket.yaml up -d
-# Bitbucket at http://localhost:7990  user: admin  pass: 12345678
-```
-
-Set in `.env`:
-```
-BITBUCKET_API_URL=http://localhost:7990
-BITBUCKET_USERNAME=admin
-BITBUCKET_PASSWORD=12345678
-```
-
 ## Testing
 
 Tests mock the injected `bitbucket_client` via `MagicMock` / `AsyncMock`.  

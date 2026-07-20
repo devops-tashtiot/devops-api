@@ -169,13 +169,6 @@ The archive must be pre-uploaded to the `platform-devops-team/xray-vulnerability
 
 Global credentials (`ARTIFACTORY_USERNAME`, `ARTIFACTORY_PASSWORD`), URL (`ARTIFACTORY_API_URL`), LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`), and `ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL` live in `global_conf.py`.
 
-## Local dev
-
-```bash
-docker compose -f ../docker-compose.artifactory.yaml up -d
-# Set ARTIFACTORY_API_URL, ARTIFACTORY_USERNAME, ARTIFACTORY_PASSWORD in .env
-```
-
 ## Live-check findings (2026-07-14)
 
 Followed the same "check all APIs live against the cluster" procedure used for

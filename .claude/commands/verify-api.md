@@ -14,5 +14,3 @@ For SonarQube group creation the three calls are:
 
 Verify with:
 - `GET /api/permissions/groups?permission=admin` — group should appear with all expected permissions
-
-Local SonarQube: `docker compose -f ../docker-compose.sonarqube.yaml up -d`

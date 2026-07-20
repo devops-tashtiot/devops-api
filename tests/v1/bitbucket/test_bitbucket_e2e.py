@@ -58,6 +58,25 @@ def api():
         yield client
 
 
+@pytest.fixture
+def clean_project(bb):
+    # Guarantees PROJECT_KEY is deleted both before AND after the test, even if the test itself
+    # fails partway through (e.g. before reaching its own DELETE assertion). Without this, a
+    # failure mid-test leaves a real leftover project in Bitbucket — confirmed live: the
+    # CAPTCHA-lockout incident left E2ETEST/E2EREPOTEST stuck exactly this way, since the old
+    # manual `_delete_project_if_exists` call only ran at the *start* of each test.
+    _delete_project_if_exists(bb, PROJECT_KEY)
+    yield PROJECT_KEY
+    _delete_project_if_exists(bb, PROJECT_KEY)
+
+
+@pytest.fixture
+def clean_repo_project(bb):
+    _delete_project_if_exists(bb, REPO_PROJECT_KEY)
+    yield REPO_PROJECT_KEY
+    _delete_project_if_exists(bb, REPO_PROJECT_KEY)
+
+
 def _delete_project_if_exists(bb: httpx.Client, key: str):
     repos = bb.get(f"/rest/api/latest/projects/{key}/repos")
     if repos.status_code == 200:
@@ -93,9 +112,7 @@ def _repo_exists(bb: httpx.Client, key: str, repo_slug: str) -> bool:
 
 
 @pytest.mark.integration
-def test_create_assign_and_delete_project(bb, api):
-    # --- clean state ---
-    _delete_project_if_exists(bb, PROJECT_KEY)
+def test_create_assign_and_delete_project(bb, api, clean_project):
     assert not _project_exists(bb, PROJECT_KEY)
 
     # --- create project via our API ---
@@ -129,9 +146,7 @@ def test_create_assign_and_delete_project(bb, api):
 
 
 @pytest.mark.integration
-def test_create_assign_group_and_delete_project(bb, api):
-    # --- clean state ---
-    _delete_project_if_exists(bb, PROJECT_KEY)
+def test_create_assign_group_and_delete_project(bb, api, clean_project):
     assert not _project_exists(bb, PROJECT_KEY)
 
     # --- create project via our API with admin_group instead of admin_user ---
@@ -162,11 +177,10 @@ def test_create_assign_group_and_delete_project(bb, api):
 
 
 @pytest.mark.integration
-def test_create_project_with_nonexistent_admin_user_returns_404(bb, api):
+def test_create_project_with_nonexistent_admin_user_returns_404(bb, api, clean_project):
     # validate_admin_principals must reject a nonexistent admin_user before ever creating the
     # project — confirms the pre-check documented in app/v1/bitbucket/CLAUDE.md is real, not
     # just aspirational.
-    _delete_project_if_exists(bb, PROJECT_KEY)
     assert not _project_exists(bb, PROJECT_KEY)
 
     r = api.post(f"{PREFIX}/", json={
@@ -187,8 +201,7 @@ def test_create_project_with_nonexistent_admin_user_returns_404(bb, api):
 
 
 @pytest.mark.integration
-def test_create_project_with_nonexistent_admin_group_returns_404(bb, api):
-    _delete_project_if_exists(bb, PROJECT_KEY)
+def test_create_project_with_nonexistent_admin_group_returns_404(bb, api, clean_project):
     assert not _project_exists(bb, PROJECT_KEY)
 
     r = api.post(f"{PREFIX}/", json={
@@ -208,11 +221,10 @@ def test_create_project_with_nonexistent_admin_group_returns_404(bb, api):
 
 
 @pytest.mark.integration
-def test_create_project_with_public_true_creates_public_project(bb, api):
+def test_create_project_with_public_true_creates_public_project(bb, api, clean_project):
     # CLAUDE.md used to claim public:false is hardcoded server-side and not exposed to callers.
     # Reading the code showed that's stale — ProjectSpec.public is passed through verbatim.
     # Confirm live that a caller-supplied public:true really flips visibility in real Bitbucket.
-    _delete_project_if_exists(bb, PROJECT_KEY)
     assert not _project_exists(bb, PROJECT_KEY)
 
     r = api.post(f"{PREFIX}/", json={
@@ -238,11 +250,10 @@ def test_create_project_with_public_true_creates_public_project(bb, api):
 
 
 @pytest.mark.integration
-def test_reassigning_admin_permission_is_idempotent(bb, api):
+def test_reassigning_admin_permission_is_idempotent(bb, api, clean_project):
     # Bitbucket's permission-assignment PUT is called once per create — confirm calling it
     # again for a principal that's already PROJECT_ADMIN doesn't error (relevant since a failed
     # rollback + retry could re-attempt this).
-    _delete_project_if_exists(bb, PROJECT_KEY)
     assert not _project_exists(bb, PROJECT_KEY)
 
     r = api.post(f"{PREFIX}/", json={
@@ -271,12 +282,11 @@ def test_reassigning_admin_permission_is_idempotent(bb, api):
 
 
 @pytest.mark.integration
-def test_delete_project_cascades_repo_deletion(bb, api):
+def test_delete_project_cascades_repo_deletion(bb, api, clean_repo_project):
     # Bitbucket refuses DELETE /projects/{key} with 409 IntegrityException whenever the
     # project still has a repo inside it (confirmed live — see app/v1/bitbucket/CLAUDE.md).
     # delete_project must delete every repo under the project first so this endpoint can
     # actually delete a real, populated project rather than only ever an empty one.
-    _delete_project_if_exists(bb, REPO_PROJECT_KEY)
     assert not _project_exists(bb, REPO_PROJECT_KEY)
 
     # --- create project via our API ---

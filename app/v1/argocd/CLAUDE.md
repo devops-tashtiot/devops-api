@@ -386,12 +386,46 @@ that's the next thing to do, not something to assume passes because the method n
 **`ssh_port` tracking, resolved the same day:** [`apis-library#12`](https://github.com/Platform-Infra-Org/apis-library/pull/12)
 also merged (shipped in `v1.2.1`). `app/main.py`'s two `Git(...)` instantiations (sonarqube and
 this module) now pass `ssh_port=global_config.GIT_SSH_PORT` (new field in `global_conf.py`,
-default `7999`), and `devtools-definition/devtools/devops-api/values.yaml` sets
-`GIT_SSH_PORT: "7999"` explicitly. The `clusters-provision/clusters/ingress-nginx` TCP-passthrough
-workaround (`7995` → `bitbucket/bitbucket:7999`) is **deliberately left in place** — its own
-comment says to remove it only once this fix "ships and is actually deployed," and this change
-has not been pushed/deployed yet. Remove that workaround as a follow-up once this is live and
-confirmed working, not before.
+default `7999`). At the time this was written, `devtools-definition/devtools/devops-api/values.yaml`
+had **not** actually set `GIT_SSH_PORT` — this note incorrectly assumed it had. See the
+2026-07-20 entry below for what actually shipped and was confirmed live.
+
+**2026-07-20 — live-tested for the first time since the `ssh_port`/`v1.2.1` bump, found and fixed
+a real regression.** Running the argocd e2e suite live (unit: 53/53 passed; e2e: 5/7 passed, 2
+failed) showed `POST /` (create) succeeding every time but `DELETE /{env}/{name}` hanging until
+the client's 30s timeout. Root-caused: `GIT_SSH_PORT` was never actually set in
+`devtools-definition`, so `global_conf.py`'s code default of `7999` (Bitbucket's real SSH port)
+was what got used — but the `clusters-provision/clusters/ingress-nginx` TCP-passthrough
+ConfigMap only had a listener on `7995` (the old hardcoded value), forwarding to
+`bitbucket/bitbucket:7999` internally. A direct socket/SSH test from inside the devops-api pod
+confirmed it precisely: port `7999` on `bitbucket.devopstashtiot.page` timed out (nothing
+listens there externally), port `7995` accepted a real SSH connection and authenticated
+successfully. So the "ships and is actually deployed" condition the note above was waiting for
+had technically shipped (the `ssh_port` param exists and defaults to the real port), but nobody
+had updated the two sides of this pairing to agree.
+
+Two ways to fix this were considered: change the ingress-nginx passthrough's key from `7995` to
+`7999` (tried first, reverted), or set `GIT_SSH_PORT` explicitly to `7995` to match the existing
+passthrough (**the one actually kept**). Fixed by:
+- `devtools-definition/devtools/devops-api/values.yaml`: added `GIT_SSH_PORT: "7995"` explicitly
+  under `env:` — no longer relies on the library/code default (which is `7999` and does **not**
+  work through the current passthrough).
+- `clusters-provision/clusters/ingress-nginx/values.yaml`: `tcp:` block **left at `"7995":
+  "bitbucket/bitbucket:7999"`** (unchanged from its original form) — this pairing (ingress key
+  `7995` + `GIT_SSH_PORT=7995`) is the one in effect, not real-port-everywhere. If this is ever
+  revisited, **both** sides must change together — updating one without the other reproduces this
+  exact hang.
+- Required a `kubectl rollout restart deployment/devops-api -n devops-api` to actually pick up
+  the new ConfigMap value — confirmed live that even after ArgoCD showed the app `Synced`, a pod
+  restarted immediately afterward still read the old value once (a real observed race between
+  ArgoCD's ConfigMap update and the restart), and only a second restart picked up `GIT_SSH_PORT=
+  7995` correctly. Don't assume "ArgoCD says Synced" + one restart is sufficient without
+  actually checking `env | grep GIT_SSH_PORT` (or the parsed `global_config.GIT_SSH_PORT`) inside
+  the new pod.
+
+Re-ran the full e2e suite after the fix: **7 passed, 1 skipped** (cluster-secret flow still
+skipped, no live token) — `test_create_delete_consumer_config_full_flow` and
+`test_create_consumer_config_with_rbac_lines` both pass now, confirmed against real Bitbucket.
 
 ## Outbound auth — migrated from a caller-supplied static token to SSO (2026-07-14)
 

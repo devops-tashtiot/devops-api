@@ -17,6 +17,49 @@ def _handle_response(response):
         raise HTTPException(status_code=response.status_code, detail=detail)
 
 
+# admin_user is technically already validated as a side effect of create_project (it's sent
+# as the project lead, and Jira rejects creation outright for a nonexistent one — confirmed
+# live) — that alone never orphans anything, since create_project is the first call and fails
+# atomically. This explicit pre-check exists anyway so a bad admin_user fails fast with a
+# clean, specific message before any write to Jira happens at all, matching admin_group's
+# check below and Bitbucket's validate_admin_principals shape, rather than relying on
+# create_project's own error message as the only signal.
+async def assert_user_exists(jira_client: Any, admin_user: str) -> None:
+    endpoint = f"{config.JIRA_ENDPOINT}/user?username={admin_user}"
+    try:
+        response = await jira_client.get(endpoint)
+        _handle_response(response)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error checking user {admin_user} exists: {str(e)}")
+        raise
+
+
+# admin_group's gap is real, not just defensive symmetry like admin_user's above: it's only
+# used in the later, separate assign_project_admin_group call, which Jira reports as a clean
+# 410 rather than a crash — meaning it hit the `except HTTPException` branch in routes.py, not
+# the bare `except:` rollback path, and was silently leaving a half-configured project
+# (created, admin_user assigned, group assignment failed) behind. Confirmed live: created a
+# real project, sent a nonexistent group, got 410, and the project still existed afterward.
+# Checking existence up front — before create_project ever runs — means a bad admin_group
+# fails the whole request cleanly, with nothing to roll back.
+async def assert_group_exists(jira_client: Any, admin_group: str) -> None:
+    # Unlike Bitbucket's filter-search endpoint (200 with an empty "values" list when nothing
+    # matches), Jira's exact-lookup group endpoint returns a genuine 404 with its own clean
+    # "The group named 'X' does not exist" message — _handle_response already surfaces that
+    # correctly, no extra empty-result check needed here.
+    endpoint = f"{config.JIRA_ENDPOINT}/group?groupname={admin_group}"
+    try:
+        response = await jira_client.get(endpoint)
+        _handle_response(response)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error checking group {admin_group} exists: {str(e)}")
+        raise
+
+
 async def create_project(jira_client: Any, payload: ProjectSpec) -> None:
     endpoint = f"{config.JIRA_ENDPOINT}/project"
     try:

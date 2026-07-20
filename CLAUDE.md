@@ -172,7 +172,8 @@ Image" run against your commit), then check `devtools-definition`'s git log for 
 
 ## Writing tests for a service module
 
-Reference implementation: `tests/v1/sonarqube/`. Every service test suite has three files.
+Reference implementation: `tests/v1/sonarqube/` (unit/schema), `tests/v1/bitbucket/` (also has
+the e2e file). Every service test suite has four files.
 
 **`conftest.py`** — mock the httpx client, build a throw-away FastAPI app with just that router:
 
@@ -217,12 +218,62 @@ def test_create_calls_all_operations(client, mock_<service>_client):
     assert any("<expected_endpoint>" in ep for ep in endpoints)
 ```
 
-**`test_<service>_schema.py`** — pydantic validation edge cases: valid names, empty, special chars, length limits.
+**`test_<service>_schema.py`** — pydantic validation edge cases: required fields, empty values,
+pattern violations, and **length boundaries at both ends** (e.g. a field with `max_length=15`
+gets a test at exactly 15 — valid — and 16 — invalid; don't just test "some long string raises").
+
+**`test_<service>_e2e.py`** (`@pytest.mark.integration`) — the fourth file, hits a **real**
+service and a **real** running devops-api, never mocks. Module-scoped fixtures for both clients,
+env-var overrides so the same file runs locally or against the cluster:
+
+```python
+import os
+import httpx
+import pytest
+
+SERVICE_URL = os.environ.get("<SERVICE>_URL", "http://localhost:<port>")
+API_URL = os.environ.get("API_URL", "http://localhost:5002")
+PREFIX = "/api/devops/v1/<service>"
+
+@pytest.fixture(scope="module")
+def svc():
+    with httpx.Client(base_url=SERVICE_URL, auth=(..., ...), timeout=30.0) as client:
+        yield client
+
+@pytest.fixture(scope="module")
+def api():
+    with httpx.Client(base_url=API_URL, timeout=30.0) as client:
+        yield client
+
+@pytest.fixture
+def clean_resource(svc):
+    # Cleanup via `yield` (not a plain call at the top of each test) — this runs the teardown
+    # line even if the test fails partway through, so a failed assertion can't leave a real
+    # leftover resource behind. Confirmed the hard way: a plain pre-test-only cleanup call left
+    # E2ETEST/E2EREPOTEST projects stuck in real Bitbucket after an unrelated auth failure —
+    # see app/v1/bitbucket/CLAUDE.md.
+    _delete_if_exists(svc, RESOURCE_KEY)
+    yield RESOURCE_KEY
+    _delete_if_exists(svc, RESOURCE_KEY)
+
+@pytest.mark.integration
+def test_create_and_delete(svc, api, clean_resource):
+    r = api.post(f"{PREFIX}/", json={...})
+    assert r.status_code == 200, r.text
+    # cross-check against the real service directly — never just trust devops-api's response
+    ...
+```
+
+See `"Checking all devtool APIs live against the cluster"` below for how to actually *run* this
+file against the real cluster (SSM, `kubectl cp`, credentials) — this section is about
+structure, that one's about the live-verification workflow.
 
 Rules:
-- Never use a real HTTP client in unit tests — always `AsyncMock`
+- Never use a real HTTP client in the unit test files (`routes`/`schema`) — always `AsyncMock`
 - Assert `call_count` to ensure no operation is silently skipped
 - Use `call_args_list` + `c.args[0]` (endpoint) and `c.kwargs["params"]` to verify exact payloads
+- In the e2e file, give every resource-creating test a `yield`-based cleanup fixture, not a
+  plain function call at the top — see `clean_resource` above
 
 ---
 
@@ -247,8 +298,6 @@ curl -s -u admin:<pass> "http://localhost:9000/api/permissions/groups?permission
 ```
 
 Expected: group appears in the `permissions/groups` response with `"permissions": ["admin"]`.
-
-Local SonarQube: `docker compose -f ../docker-compose.sonarqube.yaml up -d`
 
 ---
 
@@ -304,6 +353,54 @@ this exact sequence (established doing this for Bitbucket and Jira):
    retries). A local `pytest --collect-only` or `python -m py_compile` for a quick
    syntax/sanity check is fine; actually exercising the live assertions should happen on the
    instance.
+
+### Getting test files (and code changes) onto a live pod
+
+`tests/` is **not** baked into the production image — only `/app` is (confirmed via `COPY
+/app /app` in the Dockerfile). This means:
+
+- A fresh/newly-rolled pod has no `/tests` directory at all. `kubectl cp` into a path that
+  doesn't exist yet fails (`tar: /tests/v1/<service>: Cannot open: No such file or directory`)
+  — always `kubectl exec <pod> -- mkdir -p /tests/v1/<service>` first, then `kubectl cp`.
+- There's no `scp`/direct file transfer to the EC2 instance itself in this setup — get local
+  files onto the instance by `base64 -w0`-encoding them, `split -b 6000`-ing into chunks (SSM's
+  `send-command` parameters have a size limit well under a raw multi-KB payload), appending each
+  chunk to a file on the instance across several `send-command` calls (`echo -n "<chunk>" >>
+  /tmp/x.b64`), then `base64 -d | tar xzf` to reconstruct, then `kubectl cp` from the instance
+  into the pod as normal.
+
+### Testing route/operation changes that haven't been released yet
+
+Editing `app/v1/<service>/*.py` locally and `kubectl cp`-ing it into a running pod does **not**
+make the already-running `uvicorn` process pick it up — it already has the old module loaded in
+memory, and there's no `--reload` in production. Don't restart the pod/container to force a
+reload either — that reverts the filesystem to whatever's baked into the (not-yet-released)
+image, throwing away the very files you just copied in.
+
+Instead, launch a **second, temporary `uvicorn` process on an alternate port** (e.g. `5001`)
+inside the same container, against the already-`kubectl cp`'d files, and point the e2e test run
+at that port instead of the real serving port (`5000`) — this exercises the new code for real,
+against real dependencies (real Bitbucket/Jira/etc., real network), without touching or
+restarting the pod's actual serving process:
+
+```bash
+kubectl exec -n devops-api <pod> -- bash -c \
+  'cd / && nohup python3 -c "import uvicorn; from app.main import create_app; \
+   uvicorn.run(create_app(), host=\"0.0.0.0\", port=5001)" > /tmp/temp_server.log 2>&1 &'
+# ... run tests with API_URL=http://localhost:5001 ...
+```
+
+The `devops-api` container has **no `ps`, `pkill`, or `curl`** (confirmed — do not assume they
+exist). Work around this:
+- **HTTP checks**: use `python3 -c "import httpx; print(httpx.get('http://localhost:5001').status_code)"`
+  instead of `curl`.
+- **Finding/killing the temp process**: scan `/proc/[pid]/cmdline` directly for the port number
+  and `os.kill(pid, 9)` — write this as a small script and `kubectl cp` it in rather than trying
+  to nest `$()`/quoting through `bash -c` inside an SSM `send-command` JSON payload inside a
+  shell command (multiple quoting layers reliably break heredocs and command substitution; a
+  plain script file avoids all of it).
+- Always confirm the **real** serving port (`5000`) is unaffected afterward — the whole point of
+  this pattern is isolation from it.
 
 ---
 
@@ -629,8 +726,6 @@ Admin → Add-ons / Manage apps → Settings → uncheck "Prevent users from ins
 
 **UPM plugin key convention:**
 DELETE takes the OSGi key (e.g. `com.example.my-plugin`). UPM appends `-key` internally. The route uses `{plugin_key:path}` to handle dotted keys correctly.
-
-**MinIO setup:** `docker compose -f docker-compose.minio.yaml up -d` (S3 API on port 9100, console on 9101).
 
 ---
 

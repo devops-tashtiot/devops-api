@@ -294,16 +294,8 @@ Global credentials (`SONARQUBE_USERNAME`, `SONARQUBE_PASSWORD`) and `DOMAIN_SUFF
 (2026-07-14) — `_build_client()` (`routes.py`) hardcodes `https://{consumer_name}.sonarqube.
 {DOMAIN_SUFFIX}` and never read either field, so they had no effect regardless of what they were
 set to. Same dead-config pattern as `ARGOCD_SCHEME`/`ARGOCD_PORT` in
-`app/v1/argocd/conf.py` (also removed). If per-scheme/port overrides are ever actually needed
-(e.g. for local dev against `docker-compose.sonarqube.yaml`), they'd need to be wired into
-`_build_client()` itself, not just declared in `conf.py`.
-
-## Local dev
-
-```bash
-docker compose -f ../docker-compose.sonarqube.yaml up -d
-# SonarQube at http://localhost:9000  user: admin  pass: SonarqubeDevops1!
-```
+`app/v1/argocd/conf.py` (also removed). If per-scheme/port overrides are ever actually needed,
+they'd need to be wired into `_build_client()` itself, not just declared in `conf.py`.
 
 ## Testing
 

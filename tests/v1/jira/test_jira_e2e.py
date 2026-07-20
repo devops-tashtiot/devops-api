@@ -59,10 +59,31 @@ def _get_role_actors(jira: httpx.Client, key: str) -> list[tuple[str, str]]:
     return [(a["name"], a["type"]) for a in r.json().get("actors", [])]
 
 
-@pytest.mark.integration
-def test_create_assign_and_delete_project(jira, api):
-    # --- clean state ---
+@pytest.fixture
+def clean_project(jira):
+    # Setup + teardown via yield, not a plain function call at the top of each test body — if
+    # an earlier assertion in the test fails (e.g. the CAPTCHA lockout incident), the test
+    # aborts right there and a plain call never reaches the cleanup at the bottom, leaving the
+    # project behind in real Jira. yield-based teardown still runs even on failure.
     _delete_project_if_exists(jira, PROJECT_KEY)
+    yield PROJECT_KEY
+    _delete_project_if_exists(jira, PROJECT_KEY)
+
+
+@pytest.fixture
+def clean_nonexistent_user_project(jira):
+    # Same reasoning as clean_project — this test expects Jira to reject the create outright,
+    # but if that expectation is ever wrong, the fixture's teardown still cleans up the project
+    # rather than relying on an assertion that already failed to also run the cleanup after it.
+    key = os.environ.get("E2E_NONEXISTENT_USER_PROJECT_KEY", "E2ENOUSR")
+    _delete_project_if_exists(jira, key)
+    yield key
+    _delete_project_if_exists(jira, key)
+
+
+@pytest.mark.integration
+def test_create_assign_and_delete_project(jira, api, clean_project):
+    # --- clean state ---
     assert not _project_exists(jira, PROJECT_KEY)
 
     # --- create project via our API ---
@@ -98,10 +119,9 @@ def test_create_assign_and_delete_project(jira, api):
 
 
 @pytest.mark.integration
-def test_create_with_admin_group_also_assigns_group_role(jira, api):
+def test_create_with_admin_group_also_assigns_group_role(jira, api, clean_project):
     # admin_group is optional and additive — admin_user (the required lead) still gets the
     # role, and admin_group gets it too.
-    _delete_project_if_exists(jira, PROJECT_KEY)
     assert not _project_exists(jira, PROJECT_KEY)
 
     r = api.post(f"{PREFIX}/", json={
@@ -140,6 +160,68 @@ def test_create_project_group_only_rejected(api):
         },
     })
     assert r.status_code == 422, r.text
+
+
+@pytest.mark.integration
+def test_create_project_nonexistent_admin_user_rejected(jira, api, clean_nonexistent_user_project):
+    key = clean_nonexistent_user_project
+    assert not _project_exists(jira, key)
+
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": key,
+            "name": "e2e-nonexistent-admin",
+            "description": "Should be rejected by Jira — lead does not exist",
+            "admin_user": "definitely-not-a-real-jira-user",
+        },
+    })
+
+    assert r.status_code >= 400, r.text
+    assert r.json()["status"] == "Failed"
+    assert not _project_exists(jira, key)
+
+
+@pytest.mark.integration
+def test_delete_project_twice_second_returns_404(jira, api, clean_project):
+    # Idempotency check: deleting an already-deleted project should cleanly 404, not crash or
+    # silently report success — currently only tested against a project that never existed at
+    # all (test_delete_nonexistent_project_returns_404); this covers the "just deleted it"
+    # variant instead.
+    assert not _project_exists(jira, PROJECT_KEY)
+
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "Idempotent delete test",
+            "admin_user": ADMIN_USER,
+        },
+    })
+    assert r.status_code == 200, r.text
+    assert _project_exists(jira, PROJECT_KEY)
+
+    # --- first delete: project exists, succeeds ---
+    r = api.delete(f"{PREFIX}/{PROJECT_KEY}")
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"
+    assert not _project_exists(jira, PROJECT_KEY)
+
+    # --- second delete: already gone, must 404 cleanly ---
+    r = api.delete(f"{PREFIX}/{PROJECT_KEY}")
+    assert r.status_code == 404, r.text
+    assert r.json()["status"] == "Failed"
+
+
+@pytest.mark.integration
+def test_delete_nonexistent_project_returns_404(jira, api):
+    key = os.environ.get("E2E_NEVER_CREATED_PROJECT_KEY", "E2ENEVER")
+    assert not _project_exists(jira, key)
+
+    r = api.delete(f"{PREFIX}/{key}")
+    assert r.status_code == 404, r.text
+    assert r.json()["status"] == "Failed"
 
 
 @pytest.mark.integration
