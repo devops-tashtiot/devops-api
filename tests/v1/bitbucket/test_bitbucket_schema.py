@@ -78,3 +78,46 @@ def test_public_defaults_to_false():
     data = {k: v for k, v in VALID.items() if k != "public"}
     spec = ProjectSpec(**data)
     assert spec.public is False
+
+
+def test_admin_user_at_max_length_15_is_valid():
+    spec = ProjectSpec(**{**VALID, "admin_user": "a" * 15})
+    assert spec.admin_user == "a" * 15
+
+
+def test_admin_user_over_max_length_16_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "admin_user": "a" * 16})
+
+
+def test_admin_user_with_uppercase_raises():
+    # pattern is ^[a-z0-9]+$ — lowercase only
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "admin_user": "Admin"})
+
+
+def test_key_at_max_length_255_is_valid():
+    spec = ProjectSpec(**{**VALID, "key": "A" * 255})
+    assert spec.key == "A" * 255
+
+
+def test_key_over_max_length_256_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "key": "A" * 256})
+
+
+def test_description_at_max_length_1000_is_valid():
+    spec = ProjectSpec(**{**VALID, "description": "d" * 1000})
+    assert spec.description == "d" * 1000
+
+
+def test_description_over_max_length_1001_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "description": "d" * 1001})
+
+
+def test_unknown_field_is_ignored_not_rejected():
+    # pydantic's default extra policy ("ignore") — pin this so a future model_config change
+    # (e.g. extra="forbid") is a deliberate decision, not an accidental behavior shift.
+    spec = ProjectSpec(**{**VALID, "unexpected_field": "surprise"})
+    assert not hasattr(spec, "unexpected_field")

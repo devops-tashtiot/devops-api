@@ -102,6 +102,23 @@ def test_create_project_with_admin_user_and_group_assigns_both(client, mock_bitb
     assert any("permissions/groups" in ep for ep in put_endpoints)
 
 
+def test_create_project_passes_public_true_through_to_bitbucket(client, mock_bitbucket_client):
+    # CLAUDE.md used to (wrongly) claim public:false is hardcoded server-side. It isn't —
+    # ProjectSpec.public is a real caller-settable field passed straight through.
+    payload = {**VALID_PAYLOAD, "spec": {**VALID_PAYLOAD["spec"], "public": True}}
+    client.post(f"{PREFIX}/", json=payload)
+    body = mock_bitbucket_client.post.call_args.kwargs["json"]
+    assert body["public"] is True
+
+
+def test_create_project_defaults_public_false_when_omitted(client, mock_bitbucket_client):
+    spec = {k: v for k, v in VALID_PAYLOAD["spec"].items() if k != "public"}
+    payload = {**VALID_PAYLOAD, "spec": spec}
+    client.post(f"{PREFIX}/", json=payload)
+    body = mock_bitbucket_client.post.call_args.kwargs["json"]
+    assert body["public"] is False
+
+
 def test_create_project_admin_user_not_found_returns_404(mock_bitbucket_client):
     mock_bitbucket_client.get = AsyncMock(
         return_value=MagicMock(status_code=200, json=MagicMock(return_value={"values": []}))

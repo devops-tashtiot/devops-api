@@ -208,6 +208,69 @@ def test_create_project_with_nonexistent_admin_group_returns_404(bb, api):
 
 
 @pytest.mark.integration
+def test_create_project_with_public_true_creates_public_project(bb, api):
+    # CLAUDE.md used to claim public:false is hardcoded server-side and not exposed to callers.
+    # Reading the code showed that's stale — ProjectSpec.public is passed through verbatim.
+    # Confirm live that a caller-supplied public:true really flips visibility in real Bitbucket.
+    _delete_project_if_exists(bb, PROJECT_KEY)
+    assert not _project_exists(bb, PROJECT_KEY)
+
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "End-to-end test project (public)",
+            "public": True,
+            "admin_user": ADMIN_USER,
+        },
+    })
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "successful"
+
+    project = bb.get(f"/rest/api/latest/projects/{PROJECT_KEY}")
+    assert project.status_code == 200, project.text
+    assert project.json()["public"] is True
+
+    r = api.delete(f"{PREFIX}/{PROJECT_KEY}")
+    assert r.status_code == 200, r.text
+    assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
+def test_reassigning_admin_permission_is_idempotent(bb, api):
+    # Bitbucket's permission-assignment PUT is called once per create — confirm calling it
+    # again for a principal that's already PROJECT_ADMIN doesn't error (relevant since a failed
+    # rollback + retry could re-attempt this).
+    _delete_project_if_exists(bb, PROJECT_KEY)
+    assert not _project_exists(bb, PROJECT_KEY)
+
+    r = api.post(f"{PREFIX}/", json={
+        "metadata": REQUEST_METADATA,
+        "spec": {
+            "key": PROJECT_KEY,
+            "name": PROJECT_NAME,
+            "description": "End-to-end test project (idempotent permission re-assign)",
+            "public": False,
+            "admin_user": ADMIN_USER,
+        },
+    })
+    assert r.status_code == 200, r.text
+
+    # re-assign the same permission directly against Bitbucket — must not error
+    repeat = bb.put(
+        f"/rest/api/latest/projects/{PROJECT_KEY}/permissions/users",
+        params={"name": ADMIN_USER, "permission": "PROJECT_ADMIN"},
+    )
+    assert repeat.status_code == 204, repeat.text
+    assert _get_project_user_permission(bb, PROJECT_KEY, ADMIN_USER) == "PROJECT_ADMIN"
+
+    r = api.delete(f"{PREFIX}/{PROJECT_KEY}")
+    assert r.status_code == 200, r.text
+    assert not _project_exists(bb, PROJECT_KEY)
+
+
+@pytest.mark.integration
 def test_delete_project_cascades_repo_deletion(bb, api):
     # Bitbucket refuses DELETE /projects/{key} with 409 IntegrityException whenever the
     # project still has a repo inside it (confirmed live — see app/v1/bitbucket/CLAUDE.md).

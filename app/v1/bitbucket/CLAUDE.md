@@ -55,11 +55,16 @@ unnoticed until now).
 
 ```
 POST /rest/api/latest/projects
-Body: {"key": key, "name": name, "description": description, "public": false}
+Body: {"key": key, "name": name, "description": description, "public": <caller-supplied, default false>}
 → 201
 ```
 
-Projects are always created as private (`public: false` is hardcoded — the field is not exposed to callers).
+**Correction (2026-07-20):** this used to say `public: false` is hardcoded and not exposed to
+callers — that was stale/wrong. `ProjectSpec.public` (`schemas.py`) is a real, caller-settable
+`bool` field defaulting to `False`; `create_project` (`operations.py`) passes `payload.public`
+straight through unmodified. A caller that sends `"public": true` really does create a public
+Bitbucket project — confirmed live. Found while chasing a reported doc/code mismatch; the code
+was correct, only the doc was wrong.
 
 ### Delete project — cascades repo deletion first
 
@@ -181,6 +186,7 @@ revisit this.
 | `key` | `str` | required; `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 | `name` | `str` | required; `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 | `description` | `str` | required; max 1000 chars |
+| `public` | `bool` | optional; default `False`; passed through verbatim to Bitbucket (see below) |
 | `admin_user` | `Optional[str]` | `^[a-z0-9]+$`; max 15 chars |
 | `admin_group` | `Optional[str]` | `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 
