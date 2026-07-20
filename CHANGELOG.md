@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-07-20
+
+### Bug Fixes
+
+- *(bitbucket)* Two test bugs found running the suite live against the real cluster ([d3cde1c](https://github.com/devops-tashtiot/devops-api/commit/d3cde1c143c31f84dca6bd9b1c7d7d91592269ed))
+
 ## [0.3.0] - 2026-07-19
 
 ### Bug Fixes
