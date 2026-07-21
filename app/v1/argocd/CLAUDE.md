@@ -40,6 +40,46 @@ Each field is either a quoted string (`"..."`) or a non-whitespace token (`role:
 
 Omit the field (or pass `null`) to create a consumer without extra roles.
 
+**Where the valid resource/action lists come from (`schemas.py:13-45`).** The `p` line's
+`<resource>`/`<action>` fields are constrained twice, in two different ways, from the same
+underlying list: `_RESOURCE`/`_ACTION` (regex alternations used inside `RoleLine`'s pattern, for
+raw `extra_roles` strings) and `RbacResourceEnum`/`RbacActionEnum` (real Python enums used by the
+structured `PLine` model's `resource`/`action` fields, and also exposed live via `GET
+/rbac-resources`/`GET /rbac-actions` so callers can discover valid values at runtime instead of
+guessing). Both are **hardcoded**, transcribed by hand from
+[ArgoCD's RBAC spec](https://argo-cd.readthedocs.io/en/stable/operator-manual/rbac/) — the same
+situation as the `config` field's namespace lists below (no live ArgoCD API returns "the current
+valid RBAC resource/action list", so there's nothing to fetch instead).
+
+**⚠️ Check this again on the next ArgoCD version upgrade.** If a future ArgoCD version adds a new
+RBAC resource type or action (the way `applicationsets` was presumably added when ArgoCD
+introduced ApplicationSets as a feature), both `_RESOURCE`/`_ACTION` and
+`RbacResourceEnum`/`RbacActionEnum` would need updating by hand to match — until then, a
+perfectly valid new RBAC line would be rejected as invalid by this API. Whoever bumps the ArgoCD
+chart/image version on this platform next should re-read the RBAC spec link above against
+whatever version is being upgraded to and update all four of these (the two regex alternations
+and the two enum classes need to stay in sync with each other, not just with ArgoCD).
+
+## ConsumerConfigSpec — `config` field (`ConsumerExtraConfig`)
+
+`config` is an optional field on `POST /` letting a caller pass extra key/value overrides for
+ArgoCD's own `argocd-cm` and `argocd-cmd-params-cm` config files, via two optional dicts:
+`extra_argocd_cm_args` and `extra_argocd_params`. These get written verbatim into the consumer's
+`config.yaml` under a `config:` key (`operations.py:171-178`) — something downstream (the ArgoCD
+GitOps chart, in a different repo) is what actually turns that key into real ConfigMap entries.
+
+**2026-07-20 — removed the namespace-prefix whitelist.** `validate_keys_and_yaml` (renamed
+`validate_yaml`) used to reject any key whose first dot-segment wasn't in one of two hardcoded
+frozensets (`_ARGOCD_CM_NAMESPACES`/`_ARGOCD_PARAMS_NAMESPACES`), transcribed by hand from
+ArgoCD's own docs for these two files. Removed because there's no live API to keep that list in
+sync with ArgoCD's actual, evolving config schema (unlike, say, Jira/Artifactory roles, which
+this repo's own convention says to fetch live rather than hardcode) — a future ArgoCD version
+adding a new top-level config namespace would have been silently rejected as "unknown" until
+someone remembered to update the two frozensets by hand. Any key/prefix is accepted now; only the
+YAML-validity check for multi-line values (a value containing `\n` must parse as valid YAML) was
+kept — that's a genuinely independent safety check, unrelated to whether ArgoCD's schema itself
+has changed.
+
 ## Live-check findings (2026-07-13)
 
 Followed the same "check all APIs live against the cluster" procedure used for Bitbucket, Jira,
@@ -479,18 +519,150 @@ Two separate problems, confirmed one at a time:
   from the same `/devtools/rhbk/oidc-client-secret` SSM parameter via the existing `vault:`
   mechanism — one more consumer of that shared value, not a new secret.
 
-**Status: code + config written and unit-tested (mocked), not yet live-verified end-to-end.**
-The token-mint + audience + RBAC design was validated piece-by-piece live during investigation
-(see above), but the actual deployed `_build_argocd()` flow — real `devops-api-argocd` client
-existing, real `policy.csv` change applied, a real token successfully calling `get_app`/`sync`/
-`modify_parameters` — has not yet been exercised end-to-end against the live cluster. Do that
-before considering this fully done: apply the `clusters-provision`/`devtools-definition`
-changes, wait for the `ArgoCD` client scope + RBAC to actually sync, then hit `PUT
-/cluster-secret/{app_name}/{chosen_name}` (uses `modify_parameters`/`sync`, not
-`create_app`/`delete_app` — those still can't run at all until
-[`apis-library#15`](https://github.com/Platform-Infra-Org/apis-library/pull/15) merges, see the
-section above) against an Application that already exists, and confirm it actually succeeds
-rather than 401/403ing.
+**2026-07-21 — live-verified end-to-end for the first time, found a real bug: ArgoCD server
+cannot verify Keycloak's TLS certificate.** Ran `test_create_update_delete_cluster_secret_full_flow`
+against the real cluster with a real `argocd-cluster-sa` Kubernetes token
+(`kubectl create token argocd-cluster-sa -n default`). `POST /cluster-secret` failed:
+
+```
+{"status":"Failed","status_code":401,"stdout":"Exception in ArgoCD. ArgoCD status code: 401. ArgoCD message: invalid session: failed to verify the token"}
+```
+
+Confirmed the *devops-api* side of the SSO flow is correct — minted a token directly against
+`https://rhbk.devopstashtiot.page/realms/devtools/protocol/openid-connect/token` with
+`client_id=devops-api-argocd`/the real client secret/`scope=devops-api-argocd-audience` and
+decoded it: `aud: ["argocd", "account"]`, `groups: ["devops-api-argocd-svc"]` — exactly the
+audience + RBAC-group shape the "Outbound auth" design above intended. The bug is entirely on
+ArgoCD's side. `kubectl logs -n argocd deployment/argocd-server` showed the real error:
+
+```
+level=warning msg="Failed to verify session token: failed to verify provider token: token verification failed for all audiences: error for aud \"argocd\": failed to query provider \"https://rhbk.devopstashtiot.page/realms/devtools\": Get \"https://rhbk.devopstashtiot.page/realms/devtools/.well-known/openid-configuration\": tls: failed to verify certificate: x509: certificate signed by unknown authority"
+```
+
+**Root cause:** `argocd-server` has to make its own outbound HTTPS call to
+`rhbk.devopstashtiot.page`'s OIDC discovery endpoint to verify any OIDC-issued Bearer token
+(this happens per-verification, not just at startup — same "JWKS fetch is a live per-request
+dependency, not a one-time startup check" gotcha this repo's own `CLAUDE.md` already documents
+for devops-api's *inbound* auth). That hostname resolves in-cluster via the same CoreDNS
+`rewrite` workaround documented above, routing through `ingress-nginx-controller` and
+presenting the real Cloudflare Origin Certificate.
+
+**Actual root cause, found and fixed same day — `oidc.config.rootCA` had the wrong certificate,
+not a missing one.** `devtools-definition/devtools/argocd/values.yaml` already had an
+`oidc.config.rootCA` field with a Cloudflare-related cert inlined (commit `8fe4244`, 2026-07-15,
+an *earlier* session — not added as part of this finding), and `kubectl get cm argocd-cm -n
+argocd` confirmed it was genuinely deployed, byte-for-byte matching the repo. Restarting
+`argocd-server` (`kubectl rollout restart deployment/argocd-server -n argocd` — safe, it's the
+API/UI component, separate from `argocd-application-controller` which does actual GitOps
+reconciliation) to rule out a stale-pod-cache theory still reproduced the identical failure
+against a pod that had just freshly re-read that ConfigMap — proving the deployed value itself
+was wrong, not stale.
+
+Decoded the actual cert with `openssl x509 -noout -subject -issuer -ext basicConstraints`:
+
+```
+subject=O=CloudFlare, Inc., OU=CloudFlare Origin CA, CN=CloudFlare Origin Certificate
+issuer=C=US, O=CloudFlare, Inc., OU=CloudFlare Origin SSL Certificate Authority, ...
+X509v3 Basic Constraints: critical
+    CA:FALSE
+```
+
+This is `*.devopstashtiot.page`'s own **leaf** origin certificate (`CA:FALSE`) — the exact same
+PEM ingress-nginx uses as its own TLS serving cert (SSM `/devtools/cloudflare/origin-cert-crt`)
+— not the **CA** that signs it. A non-CA leaf certificate can never be a valid trust anchor for
+verifying a *different* host's leaf certificate (rhbk's), no matter how "Cloudflare" the name on
+it sounds, which is exactly why every Bearer-token verification failed with
+`x509: certificate signed by unknown authority` regardless of how correct the SSO token itself
+was.
+
+**Fixed** — swapped `oidc.config.rootCA` for Cloudflare's own published, static Origin CA root
+certificate (public, identical for every Cloudflare customer, not domain-specific; source:
+https://developers.cloudflare.com/ssl/origin-configuration/origin-ca/ — the same file
+`devops-api`'s own Dockerfile already installs as `cloudflare-origin-ca-rsa-root.pem` for the
+identical reason). Verified `openssl verify -CAfile <new-cert> <old-leaf-cert>` → `OK` *before*
+applying the change, confirming this is genuinely the certificate that signs what's on the wire.
+Committed + pushed to `devtools-definition` (`c02ed81`), forced an ArgoCD hard refresh
+(`kubectl patch application argocd -n argocd --type merge -p
+'{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'`) rather than waiting for
+the next poll cycle, and confirmed live the `argocd-cm` ConfigMap picked up the new cert content.
+
+**Confirmed fixed live:** re-ran the test with a fresh token — `POST /cluster-secret` (create)
+now returns `200`, no 401, for the first time ever. Manually called `DELETE /cluster-secret` via
+devops-api directly (not bypassing it with `kubectl` this time) — also `200`, and confirmed via
+`kubectl get application` that the Application was genuinely gone (`NotFound`). Both
+`create_cluster_secret` and `delete_cluster_secret`'s ArgoCD-auth path are now proven working
+end-to-end against the real cluster.
+
+**Follow-on race, found in the same run and fixed immediately after — "another operation is
+already in progress."** `PUT /cluster-secret/{app_name}/{chosen_name}` (update), called
+immediately after create succeeds, failed with:
+
+```
+{"status":"Failed","status_code":400,"stdout":"Exception in ArgoCD. ArgoCD status code: 400. ArgoCD message: another operation is already in progress"}
+```
+
+Root cause: `argocd.sync(app_name)` (library `service.py`) only calls `client.sync_app(app_name)`
+and returns immediately — it does not wait for the triggered sync *operation* to actually finish.
+`create_cluster_secret()` called `create_app(wait=True)` (which does wait, via
+`wait_for_app_creation`) then `sync()` (which doesn't), so `POST /cluster-secret` could return
+`200` while ArgoCD was still mid-sync — an immediate follow-up `PUT`'s own `sync()` call then hit
+ArgoCD's one-operation-at-a-time limit.
+
+**Fixed, not by adding a fixed sleep** (which would be a guess — too short under load, wasted
+time otherwise) **but by using the library's own real-completion primitive,
+`ArgoCD.wait_for_update(app_name)`** — it polls `get_app` until the Application's status
+fingerprint (revision/reconciled_at/op_finished_at/history length) actually changes, bounded by
+`ARGOCD_APPLICATION_SET_TIMEOUT` (same 300s default already used elsewhere), the exact same
+"wait for the real signal, not a duration" pattern the 2026-07-18 entry above already established
+for `create_app`'s `wait=True` → `wait_for_app_creation`. Added:
+
+- `create_cluster_secret()` (`operations.py`): `await argocd.wait_for_update(argo_app_name)`
+  after `sync()`, so `POST /cluster-secret` doesn't return until the sync it triggered has
+  genuinely finished.
+- `edit_cluster_secret()` (`operations.py`): same addition after its own `sync()`, for symmetry —
+  an immediate second update or a delete right after an update could hit the identical race
+  otherwise.
+- `delete_cluster_secret()` (`operations.py`): added `wait=True` to the `delete_app()` call
+  (`argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE, wait=True)`) — the library's
+  own docstring says this is "required before recreating an Application under the same name,"
+  which is exactly what this test's own "clean state" step does (delete, then immediately
+  create).
+
+Unit tests updated to match (`tests/v1/argocd/test_argocd_routes.py`): the shared
+`_mock_argocd_for_create()` fixture and the edit-route mocks now also stub `wait_for_update`
+(a `MagicMock()` has no async-aware default, so an unstubbed `await
+argocd.wait_for_update(...)` would raise `TypeError: object MagicMock can't be used in 'await'
+expression` — this broke every mocked create/edit test the moment the real code started calling
+it), plus new assertions locking in `wait_for_update.call_count == 1` and
+`delete_app.call_args.kwargs["wait"] is True`.
+
+**Confirmed live, full flow, first time ever passing:** re-ran
+`test_create_update_delete_cluster_secret_full_flow` end-to-end (create → update → delete) — all
+three steps passed in 3.55s, no race, no leftover Application afterward.
+
+Also worth noting, unrelated to either bug above but visible in the same logs: `argocd-server`
+logs `"config referenced '$argocd-secret:oidc.keycloak.clientSecret', but key does not exist in
+secret"` on a ~10s repeating timer — the `clientSecret` substitution in `oidc.config` may not be
+resolving. Not investigated since it didn't affect the Bearer-token path this session tests, but
+flagging in case it turns out related or breaks the interactive browser login flow.
+
+Left the leftover `e2e-test-cluster-secret` Application (a stuck artifact from an earlier
+attempt at this same test, confirmed via its `spec` showing the *update* step's
+`namespace: default,kube-system` — meaning create+update had worked before, but delete/cleanup
+never completed) deleted via `kubectl delete application e2e-test-cluster-secret -n argocd`
+directly (bypassing the still-broken auth path at that point in the investigation). The *second*
+leftover, created by this session's own successful post-fix `POST /cluster-secret` call, was
+cleaned up properly through devops-api's own `DELETE /cluster-secret` route instead — the first
+real proof that route works end-to-end, not just a kubectl-level workaround.
+
+**Both the trust-store bug and the operation-in-progress race are fixed and confirmed live** —
+the full create → update → delete cluster-secret flow passes end-to-end against the real
+cluster for the first time ever. Nothing known remaining on this path as of 2026-07-21.
+
+**Status before this finding, kept for context:** code + config written and unit-tested
+(mocked); the token-mint + audience + RBAC design was validated piece-by-piece live during the
+original investigation (see the "Outbound auth" section above), but the actual deployed
+`_build_argocd()` flow had never been exercised end-to-end against the live cluster until now.
 
 ## `create_cluster_secret` now waits for app visibility before syncing (2026-07-18)
 

@@ -170,6 +170,39 @@ def test_create_consumer_config_with_rbac_lines(bb, api):
 
 
 @pytest.mark.integration
+def test_create_consumer_config_with_extra_config(bb, api):
+    _delete_config_if_exists(bb, api, ENV, CONSUMER_NAME)
+
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "name": CONSUMER_NAME,
+                "environment": ENV,
+                "size": "small",
+                "include_resources": ["ConfigMap"],
+                "ad_admin_group": "my_group",
+                "config": {
+                    "extra_argocd_cm_args": {"server.rbac.log.enforce.enable": "verbose"},
+                    "extra_argocd_params": {"controller.status.processors": 20},
+                },
+            },
+        },
+    )
+    assert r.status_code == 200, r.text
+
+    config = _get_config_yaml(bb, ENV, CONSUMER_NAME)
+    assert config is not None
+    assert config["config"] == {
+        "extra_argocd_cm_args": {"server.rbac.log.enforce.enable": "verbose"},
+        "extra_argocd_params": {"controller.status.processors": 20},
+    }
+
+    _delete_config_if_exists(bb, api, ENV, CONSUMER_NAME)
+
+
+@pytest.mark.integration
 def test_get_sizes_returns_allowed_values(api):
     r = api.get(f"{PREFIX}/sizes")
     assert r.status_code == 200, r.text

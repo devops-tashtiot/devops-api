@@ -174,6 +174,7 @@ def _mock_argocd_for_create():
     argocd = MagicMock()
     argocd.create_app = AsyncMock(return_value=None)
     argocd.sync = AsyncMock(return_value=None)
+    argocd.wait_for_update = AsyncMock(return_value=None)
     return argocd
 
 
@@ -193,11 +194,62 @@ def test_create_cluster_secret_calls_create_app_and_sync(client):
         client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
     assert mock_argocd.create_app.call_count == 1
     assert mock_argocd.sync.call_count == 1
+    assert mock_argocd.wait_for_update.call_count == 1
 
 
 def test_create_cluster_secret_missing_clusters_returns_422(client):
     payload = {**VALID_CLUSTER_SECRET_PAYLOAD, "spec": {**VALID_CLUSTER_SECRET_PAYLOAD["spec"], "application_clusters": []}}
     assert client.post(f"{PREFIX}/cluster-secret", json=payload).status_code == 422
+
+
+# POST /cluster-secret — _check_cluster_permissions itself (not mocked away), only the
+# underlying kubectl subprocess call is faked, so the real 401/403 branch logic executes.
+
+def _mock_subprocess(stdout: bytes, stderr: bytes):
+    proc = MagicMock()
+    proc.communicate = AsyncMock(return_value=(stdout, stderr))
+    return AsyncMock(return_value=proc)
+
+
+def test_check_cluster_permissions_allows_when_stdout_yes(client):
+    mock_argocd = _mock_argocd_for_create()
+    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=_mock_subprocess(b"yes\n", b"")), \
+         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    assert response.status_code == 200
+    assert response.json()["status"] == "successful"
+
+
+def test_check_cluster_permissions_401_on_stderr(client):
+    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec",
+               new=_mock_subprocess(b"", b"error: You must be logged in to the server")):
+        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    assert response.status_code == 401
+    assert "token is invalid or the server is unreachable" in response.json()["stdout"]
+
+
+def test_check_cluster_permissions_403_on_no_admin(client):
+    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=_mock_subprocess(b"no\n", b"")):
+        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    assert response.status_code == 403
+    assert "missing admin permission" in response.json()["stdout"]
+
+
+def test_check_cluster_permissions_checks_each_namespace(client):
+    mock_argocd = _mock_argocd_for_create()
+    mock_exec = _mock_subprocess(b"yes\n", b"")
+    payload = {
+        **VALID_CLUSTER_SECRET_PAYLOAD,
+        "spec": {
+            **VALID_CLUSTER_SECRET_PAYLOAD["spec"],
+            "application_clusters": [{**VALID_CLUSTER, "namespace": "ns1,ns2"}],
+        },
+    }
+    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=mock_exec), \
+         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+        response = client.post(f"{PREFIX}/cluster-secret", json=payload)
+    assert response.status_code == 200
+    assert mock_exec.call_count == 2
 
 
 # DELETE /cluster-secret
@@ -223,6 +275,7 @@ def test_delete_cluster_secret_calls_delete_app_once(client):
             params={"app_name": "netanel", "chosen_name": "nati"},
         )
     assert mock_argocd.delete_app.call_count == 1
+    assert mock_argocd.delete_app.call_args.kwargs.get("wait") is True
 
 
 # PUT /cluster-secret/{app_name}/{chosen_name}
@@ -231,6 +284,7 @@ def test_edit_cluster_secret_returns_200(client):
     mock_argocd = MagicMock()
     mock_argocd.modify_parameters = AsyncMock(return_value=None)
     mock_argocd.sync = AsyncMock(return_value=None)
+    mock_argocd.wait_for_update = AsyncMock(return_value=None)
     with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
         response = client.put(
             f"{PREFIX}/cluster-secret/netanel/nati",
@@ -244,6 +298,7 @@ def test_edit_cluster_secret_calls_modify_and_sync(client):
     mock_argocd = MagicMock()
     mock_argocd.modify_parameters = AsyncMock(return_value=None)
     mock_argocd.sync = AsyncMock(return_value=None)
+    mock_argocd.wait_for_update = AsyncMock(return_value=None)
     with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
         client.put(
             f"{PREFIX}/cluster-secret/netanel/nati",
@@ -251,3 +306,4 @@ def test_edit_cluster_secret_calls_modify_and_sync(client):
         )
     assert mock_argocd.modify_parameters.call_count == 1
     assert mock_argocd.sync.call_count == 1
+    assert mock_argocd.wait_for_update.call_count == 1

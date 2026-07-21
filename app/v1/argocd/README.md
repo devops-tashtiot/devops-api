@@ -94,6 +94,8 @@ Returns the list of valid environments for this deployment.
 
 Registers one or more Kubernetes clusters as ArgoCD cluster secrets by creating (and syncing) an ArgoCD `Application` that deploys the `cluster-secret` Helm chart. Before creating the Application, each `application_clusters[]` entry's token is validated by running `kubectl auth can-i "*" "*"` against that cluster's own API server — a `401` means the token is invalid or the server is unreachable, a `403` means the token lacks admin rights.
 
+This endpoint blocks until the sync it triggers has actually finished (not just been dispatched) before returning `200` — bounded by `ARGOCD_APPLICATION_SET_TIMEOUT` (default 300s). This avoids a race where a caller's very next request (an update or delete) would otherwise hit ArgoCD's "another operation is already in progress" error.
+
 devops-api authenticates its own call to ArgoCD's API via SSO (a `client_credentials` token minted against `clusters-provision/clusters/rhbk`'s dedicated `devops-api-argocd` service-account client) — there is no ArgoCD API token in the request body; callers never supply ArgoCD credentials at all.
 
 **Request body**
@@ -108,7 +110,7 @@ devops-api authenticates its own call to ArgoCD's API via SSO (a `client_credent
 
 ### `DELETE /cluster-secret`
 
-Deletes the ArgoCD `Application` created by `POST /cluster-secret`.
+Deletes the ArgoCD `Application` created by `POST /cluster-secret`. Blocks until the deletion is confirmed (not just accepted) before returning `200` — required before an Application with the same name can be recreated.
 
 **Query parameters**: `app_name`, `chosen_name` (both required).
 
@@ -116,7 +118,7 @@ Deletes the ArgoCD `Application` created by `POST /cluster-secret`.
 
 ### `PUT /cluster-secret/{app_name}/{chosen_name}`
 
-Updates an existing cluster-secret Application's Helm parameters (replaces `application_clusters`) and re-syncs it.
+Updates an existing cluster-secret Application's Helm parameters (replaces `application_clusters`) and re-syncs it. Like `POST /cluster-secret`, blocks until that sync has actually finished before returning `200`.
 
 **Path parameters**: `app_name`, `chosen_name`.
 
@@ -155,22 +157,21 @@ The optional `config` field injects ArgoCD configuration into the consumer's `co
 
 ### `extra_argocd_cm_args`
 
-Key-value pairs written into the `argocd-cm` ConfigMap. Keys are validated by their namespace prefix:
-
-| Valid namespace prefixes |
-|---|
-| `application`, `exec`, `admin`, `timeout`, `statusbadge`, `resource`, `kustomize`, `jsonnet`, `helm`, `server`, `ui`, `dex`, `oidc`, `users`, `accounts`, `ga`, `help`, `cluster`, `project`, `extension`, `webhook`, `commit`, `sourceHydrator` |
-| Exact single-word keys: `url`, `additionalUrls`, `installationID`, `passwordPattern` |
+Key-value pairs written into the `argocd-cm` ConfigMap. Any key is accepted — there is no
+namespace whitelist (see `app/v1/argocd/CLAUDE.md` for why: a hardcoded list would need to be
+kept in sync by hand with ArgoCD's own evolving config schema, and there's no live API to check
+against instead). It's the caller's responsibility to pass keys ArgoCD actually recognizes;
+see [ArgoCD's `argocd-cm` reference](https://argo-cd.readthedocs.io/en/stable/operator-manual/argocd-cm-yaml/)
+for the real, current schema.
 
 Values must be `string`, `boolean`, `integer`, or `float` — no nested objects or lists. Multiline string values (e.g. `resource.links`) are validated as YAML.
 
 ### `extra_argocd_params`
 
-Key-value pairs written into the `argocd-cmd-params-cm` ConfigMap. Keys are validated by their component prefix:
-
-| Valid component prefixes |
-|---|
-| `controller`, `server`, `reposerver`, `applicationsetcontroller`, `notificationscontroller`, `commitserver`, `dexserver`, `redis`, `repo`, `commit`, `hydrator`, `otlp`, `application`, `log` |
+Key-value pairs written into the `argocd-cmd-params-cm` ConfigMap. Same as above — any key is
+accepted, no namespace whitelist; see
+[ArgoCD's `argocd-cmd-params-cm` reference](https://argo-cd.readthedocs.io/en/stable/operator-manual/argocd-cmd-params-cm-yaml/)
+for the real, current schema.
 
 **Example:**
 

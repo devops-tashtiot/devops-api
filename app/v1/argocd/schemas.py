@@ -145,22 +145,6 @@ class ClusterSecretIdentifier(BaseModel):
     chosen_name: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
 
 
-# Valid first-segment namespaces for argocd-cm keys
-_ARGOCD_CM_NAMESPACES: frozenset[str] = frozenset({
-    "url", "additionalUrls", "installationID", "passwordPattern",
-    "application", "exec", "admin", "timeout", "statusbadge",
-    "resource", "kustomize", "jsonnet", "helm", "server", "ui",
-    "dex", "oidc", "users", "accounts", "ga", "help", "cluster",
-    "project", "extension", "webhook", "commit", "sourceHydrator",
-})
-
-# Valid first-segment namespaces for argocd-cmd-params-cm keys
-_ARGOCD_PARAMS_NAMESPACES: frozenset[str] = frozenset({
-    "controller", "server", "reposerver", "applicationsetcontroller",
-    "notificationscontroller", "commitserver", "dexserver", "redis",
-    "repo", "commit", "hydrator", "otlp", "application", "log",
-})
-
 _ArgoCDValue = Union[str, bool, int, float]
 
 
@@ -176,22 +160,14 @@ class ConsumerExtraConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_keys_and_yaml(self) -> "ConsumerExtraConfig":
+    def validate_yaml(self) -> "ConsumerExtraConfig":
         if self.extra_argocd_cm_args:
-            bad = [k for k in self.extra_argocd_cm_args if k.split(".")[0] not in _ARGOCD_CM_NAMESPACES]
-            if bad:
-                raise ValueError(f"Unknown argocd-cm namespace(s): {', '.join(bad)}")
             for key, value in self.extra_argocd_cm_args.items():
                 if isinstance(value, str) and "\n" in value:
                     try:
                         _yaml.safe_load(value)
                     except _yaml.YAMLError as exc:
                         raise ValueError(f"Value for '{key}' is not valid YAML: {exc}")
-
-        if self.extra_argocd_params:
-            bad = [k for k in self.extra_argocd_params if k.split(".")[0] not in _ARGOCD_PARAMS_NAMESPACES]
-            if bad:
-                raise ValueError(f"Unknown argocd-cmd-params-cm namespace(s): {', '.join(bad)}")
 
         return self
 

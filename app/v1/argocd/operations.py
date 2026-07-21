@@ -107,6 +107,7 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
     try:
         await argocd.create_app(app_body, validate=False, wait=True)
         await argocd.sync(argo_app_name)
+        await argocd.wait_for_update(argo_app_name)
     except Exception as e:
         logger.error(f"Unexpected error creating cluster secret {argo_app_name}: {str(e)}")
         raise
@@ -116,7 +117,7 @@ async def delete_cluster_secret(argocd_timeout: int, params: ClusterSecretIdenti
     argocd = await _build_argocd(params.app_name, argocd_timeout)
     argo_app_name = f"{params.chosen_name}-cluster-secret"
     try:
-        await argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE)
+        await argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE, wait=True)
     except Exception as e:
         logger.error(f"Unexpected error deleting cluster secret {argo_app_name}: {str(e)}")
         raise
@@ -137,6 +138,7 @@ async def edit_cluster_secret(argocd_timeout: int, app_name: str, chosen_name: s
     try:
         await argocd.modify_parameters(helm_params, argo_app_name, config.ARGOCD_APP_NAMESPACE, "default")
         await argocd.sync(argo_app_name)
+        await argocd.wait_for_update(argo_app_name)
     except Exception as e:
         logger.error(f"Unexpected error editing cluster secret {argo_app_name}: {str(e)}")
         raise

@@ -7,6 +7,7 @@ from app.v1.argocd.schemas import (
     ClusterSecretSpec,
     ClusterSecretUpdateSpec,
     ConsumerConfigSpec,
+    ConsumerExtraConfig,
 )
 from app.v1.argocd.conf import config
 from app.global_conf import global_config
@@ -158,3 +159,52 @@ class TestClusterSecretIdentifier:
     def test_empty_app_name_raises(self):
         with pytest.raises(ValidationError):
             ClusterSecretIdentifier(app_name="", chosen_name="nati")
+
+
+class TestConsumerExtraConfig:
+    def test_none_values_valid(self):
+        cfg = ConsumerExtraConfig()
+        assert cfg.extra_argocd_cm_args is None
+        assert cfg.extra_argocd_params is None
+
+    def test_empty_dict_valid(self):
+        cfg = ConsumerExtraConfig(extra_argocd_cm_args={}, extra_argocd_params={})
+        assert cfg.extra_argocd_cm_args == {}
+
+    def test_valid_cm_namespace(self):
+        cfg = ConsumerExtraConfig(extra_argocd_cm_args={"server.rbac.log.enforce.enable": "true"})
+        assert cfg.extra_argocd_cm_args["server.rbac.log.enforce.enable"] == "true"
+
+    def test_unknown_cm_prefix_accepted(self):
+        # No namespace whitelist — deliberately not hardcoded (see app/v1/argocd/CLAUDE.md),
+        # so an arbitrary/unrecognized-looking prefix is accepted, not rejected.
+        cfg = ConsumerExtraConfig(extra_argocd_cm_args={"totallyMadeUp.setting": "true"})
+        assert cfg.extra_argocd_cm_args["totallyMadeUp.setting"] == "true"
+
+    def test_valid_params_namespace(self):
+        cfg = ConsumerExtraConfig(extra_argocd_params={"controller.status.processors": "10"})
+        assert cfg.extra_argocd_params["controller.status.processors"] == "10"
+
+    def test_unknown_params_prefix_accepted(self):
+        cfg = ConsumerExtraConfig(extra_argocd_params={"totallyMadeUp.setting": "10"})
+        assert cfg.extra_argocd_params["totallyMadeUp.setting"] == "10"
+
+    def test_valid_multiline_yaml_value(self):
+        cfg = ConsumerExtraConfig(extra_argocd_cm_args={"resource.customizations": "foo: bar\nbaz: qux"})
+        assert "foo: bar" in cfg.extra_argocd_cm_args["resource.customizations"]
+
+    def test_invalid_multiline_yaml_value_raises(self):
+        with pytest.raises(ValidationError):
+            ConsumerExtraConfig(extra_argocd_cm_args={"resource.customizations": "foo: [bar\nbaz"})
+
+    def test_list_to_dict_coercion(self):
+        cfg = ConsumerExtraConfig(
+            extra_argocd_cm_args=[{"key": "server.insecure", "value": "true"}]
+        )
+        assert cfg.extra_argocd_cm_args == {"server.insecure": "true"}
+
+    def test_list_to_dict_coercion_skips_entries_without_key(self):
+        cfg = ConsumerExtraConfig(
+            extra_argocd_cm_args=[{"key": "server.insecure", "value": "true"}, {"value": "ignored"}]
+        )
+        assert cfg.extra_argocd_cm_args == {"server.insecure": "true"}
