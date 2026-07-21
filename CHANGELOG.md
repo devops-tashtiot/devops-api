@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.5] - 2026-07-21
+
+### Bug Fixes
+
+- *(argocd)* Close cluster-secret race, drop hardcoded config namespace whitelist ([618004c](https://github.com/devops-tashtiot/devops-api/commit/618004caeb8548ebbc460b581d2ee36b2335df2e))
+
 ## [0.3.4] - 2026-07-20
 
 ### Bug Fixes
