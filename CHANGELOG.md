@@ -8,6 +8,10 @@ All notable changes to this project will be documented in this file.
 
 - *(argocd)* Close cluster-secret race, drop hardcoded config namespace whitelist ([618004c](https://github.com/devops-tashtiot/devops-api/commit/618004caeb8548ebbc460b581d2ee36b2335df2e))
 
+### Build
+
+- Migrate packaging from pip/requirements.txt to uv ([9392e56](https://github.com/devops-tashtiot/devops-api/commit/9392e563ef714f37adbc2f6b17185e4d9d106b55))
+
 ## [0.3.4] - 2026-07-20
 
 ### Bug Fixes
