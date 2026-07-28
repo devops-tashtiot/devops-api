@@ -23,11 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends git openssh-cli
 COPY cloudflare-origin-ca-rsa-root.pem /usr/local/share/ca-certificates/cloudflare-origin-ca-rsa-root.crt
 RUN update-ca-certificates
 
-COPY requirements.txt .
-RUN pip install --upgrade pip && pip install -r requirements.txt \
-    && cat /usr/local/share/ca-certificates/cloudflare-origin-ca-rsa-root.crt >> "$(python -c 'import certifi; print(certifi.where())')"
+ENV UV_LINK_MODE=copy
+RUN pip install --upgrade pip uv
 
 WORKDIR /
+COPY pyproject.toml uv.lock .python-version ./
+RUN uv sync --frozen --no-dev \
+    && cat /usr/local/share/ca-certificates/cloudflare-origin-ca-rsa-root.crt >> "$(uv run python -c 'import certifi; print(certifi.where())')"
+
 COPY /app /app
 
-CMD ["python","-m","app.main","--host","0.0.0.0","--port","5000"]
+CMD ["uv","run","--no-sync","-m","app.main","--host","0.0.0.0","--port","5000"]

@@ -4,9 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Dev bootstrap (first time on a machine)
 
+Package management is `uv`-based (Python 3.10; see `.python-version`). `pyproject.toml`
+pins `tashtiot-apis-library` directly to a GitHub-release wheel URL — no separate library
+install step is needed.
+
 ```bash
-# 1. Install the library from PyPI (requirements.txt pins the version)
-pip install tashtiot-apis-library==0.1.0
+# 1. Install all deps (runtime + dev/test group) into .venv
+uv sync --group dev
 
 # 2. Edit .env directly (do NOT copy .env.example — .env is the live config file)
 # Minimum for local dev — disable ArgoCD if you have no SSH key:
@@ -17,32 +21,39 @@ pip install tashtiot-apis-library==0.1.0
 # ArgoCD allowed envs: ARGOCD_ALLOWED_ENVS=["prod"] for network A, ["prod","dr","int"] for network B
 
 # 3. Start the server (from this directory)
-uvicorn app.main:create_app --factory --port 5000
+uv run uvicorn app.main:create_app --factory --port 5000
+```
+
+To develop against a local checkout of the library instead of the pinned wheel URL, add a
+`[tool.uv.sources]` override pointing at it (same pattern as `example-api`'s
+`pyproject.toml`):
+```toml
+[tool.uv.sources]
+tashtiot-apis-library = { path = "../apis-library", editable = true }
 ```
 
 ## Commands
 
 ```bash
-# Install dependencies (install library editable first if developing locally)
-pip install -e ../apis-library
-pip install -r requirements.txt
+# Install dependencies (runtime + dev/test group)
+uv sync --group dev
 
 # Run the dev server
-uvicorn app.main:create_app --factory --reload --port 5000
+uv run uvicorn app.main:create_app --factory --reload --port 5000
 
 # Run all tests
-pytest
+uv run pytest
 
 # Run a specific test suite
-pytest tests/v1/dns -v
-pytest tests/v1/sonarqube -v
-pytest tests/v2/dns -v
+uv run pytest tests/v1/dns -v
+uv run pytest tests/v1/sonarqube -v
+uv run pytest tests/v2/dns -v
 
 # Run a single test file
-pytest tests/v1/sonarqube/test_sonarqube_routes.py -v
+uv run pytest tests/v1/sonarqube/test_sonarqube_routes.py -v
 
 # Run with coverage
-pytest --cov=app --cov-report=term-missing
+uv run pytest --cov=app --cov-report=term-missing
 ```
 
 ## Architecture

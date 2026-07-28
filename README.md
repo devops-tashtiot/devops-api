@@ -44,10 +44,10 @@ tests/ -  A directory for unit tests for the api server capabilities.
 ## Local Development
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Run FastAPI server
-uvicorn main:app --reload --port 5000
+uv run uvicorn app.main:create_app --factory --reload --port 5000
 ```
 
 ## Docker Deployment
