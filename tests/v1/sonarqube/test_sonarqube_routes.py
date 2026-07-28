@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.global_conf import global_config
 from app.v1.sonarqube.conf import config
 from app.v1.sonarqube.operations import SONARQUBE_GLOBAL_PERMISSIONS, SONARQUBE_TEMPLATE_PERMISSIONS
 from app.v1.sonarqube.routes import get_v1_sonarqube_router
@@ -155,6 +156,63 @@ def test_create_group_unexpected_error_triggers_rollback(mock_sonar_client):
     endpoints = [call.args[0] for call in mock_sonar_client.post.call_args_list]
     assert any("user_groups/create" in ep for ep in endpoints)
     assert any("user_groups/delete" in ep for ep in endpoints)
+
+
+def test_create_group_permission_failure_triggers_rollback(mock_sonar_client):
+    # create succeeds; the first global-permission call fails with an HTTPException-raising
+    # response; the rollback delete call succeeds. Regression test for a real bug: the route
+    # used to only roll back on non-HTTPException errors, so an HTTPException raised by
+    # assign_global_permissions/assign_template_permissions (the far more likely real-world
+    # failure, since _handle_response turns any non-2xx into one) left a group that was
+    # already created on SonarQube's side stuck half-configured, with no cleanup.
+    ok = MagicMock(status_code=200, text="")
+    perm_failure = MagicMock(status_code=500, text="Internal error")
+    perm_failure.json = MagicMock(return_value={"errors": []})
+    mock_sonar_client.post = AsyncMock(side_effect=[ok, perm_failure, ok])
+
+    app = FastAPI()
+    app.include_router(get_v1_sonarqube_router(MagicMock()))
+    c = TestClient(app)
+
+    response = c.post(f"{PREFIX}/", json=VALID_PAYLOAD)
+
+    assert response.status_code == 500
+    assert response.json()["status"] == "Failed"
+    assert mock_sonar_client.post.call_count == 3
+    endpoints = [call.args[0] for call in mock_sonar_client.post.call_args_list]
+    assert any("user_groups/create" in ep for ep in endpoints)
+    assert any("permissions/add_group" in ep for ep in endpoints)
+    assert any("user_groups/delete" in ep for ep in endpoints)
+
+
+def test_create_group_permission_failure_error_message_uses_errors_list(mock_sonar_client):
+    # _handle_response prefers errors[0]["msg"] over response.text when SonarQube's real error
+    # shape ({"errors": [{"msg": "..."}]}) is present — previously only the empty-errors
+    # fallback-to-text path had coverage (test_create_group_already_exists_returns_400).
+    ok = MagicMock(status_code=200, text="")
+    perm_failure = MagicMock(status_code=500, text="ignored when errors[] is present")
+    perm_failure.json = MagicMock(return_value={"errors": [{"msg": "Malformed permission name"}]})
+    mock_sonar_client.post = AsyncMock(side_effect=[ok, perm_failure, ok])
+
+    app = FastAPI()
+    app.include_router(get_v1_sonarqube_router(MagicMock()))
+    c = TestClient(app)
+
+    response = c.post(f"{PREFIX}/", json=VALID_PAYLOAD)
+
+    assert "Malformed permission name" in response.json()["stdout"]
+
+
+def test_build_client_uses_expected_per_consumer_hostname(client, patch_base_api):
+    # Regression test for the exact hostname format _build_client() constructs — this pattern
+    # already cost significant live-debugging time (no wildcard DNS/Ingress route existed for
+    # *.sonarqube.{DOMAIN_SUFFIX} until this was fixed live; see app/v1/sonarqube/CLAUDE.md).
+    # A unit-level assertion on the URL passed to BaseAPI catches a future accidental format
+    # change immediately, instead of only failing live against the real cluster.
+    client.post(f"{PREFIX}/", json=VALID_PAYLOAD)
+    patch_base_api.assert_called_once()
+    url = patch_base_api.call_args.args[0]
+    assert url == f"https://test-consumer.sonarqube.{global_config.DOMAIN_SUFFIX}"
 
 
 def test_get_sizes_returns_200(client):

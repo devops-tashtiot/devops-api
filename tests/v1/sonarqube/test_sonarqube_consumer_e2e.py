@@ -96,11 +96,20 @@ def _delete_config_if_exists(bb: httpx.Client, api: httpx.Client, name: str):
     assert _get_config_yaml(bb, name) is None
 
 
-@pytest.mark.integration
-def test_create_update_delete_consumer_config_full_flow(bb, api):
-    # --- clean state ---
+@pytest.fixture
+def clean_consumer_config(bb, api):
+    # Cleanup via `yield` (not a plain call at the top/bottom of the test) — this runs the
+    # teardown line even if the test fails partway through (e.g. between create and delete),
+    # so a failed assertion can't leave a real leftover consumer config behind. Same class of
+    # bug fixed for Bitbucket's E2ETEST/E2EREPOTEST leftover projects — see
+    # app/v1/bitbucket/CLAUDE.md.
+    _delete_config_if_exists(bb, api, CONSUMER_NAME)
+    yield CONSUMER_NAME
     _delete_config_if_exists(bb, api, CONSUMER_NAME)
 
+
+@pytest.mark.integration
+def test_create_update_delete_consumer_config_full_flow(bb, api, clean_consumer_config):
     # --- create consumer config via our API ---
     r = api.post(
         f"{PREFIX}/consumer/",
@@ -153,9 +162,7 @@ def test_create_update_delete_consumer_config_full_flow(bb, api):
 
 
 @pytest.mark.integration
-def test_create_consumer_config_default_size_omits_size_key(bb, api):
-    _delete_config_if_exists(bb, api, CONSUMER_NAME)
-
+def test_create_consumer_config_default_size_omits_size_key(bb, api, clean_consumer_config):
     r = api.post(
         f"{PREFIX}/consumer/",
         json={"metadata": REQUEST_METADATA, "spec": {"name": CONSUMER_NAME}},
@@ -166,8 +173,6 @@ def test_create_consumer_config_default_size_omits_size_key(bb, api):
     assert config is not None
     assert "size" not in config
     assert "plugins_list" not in config
-
-    _delete_config_if_exists(bb, api, CONSUMER_NAME)
 
 
 @pytest.mark.integration

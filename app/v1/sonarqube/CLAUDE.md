@@ -45,6 +45,73 @@ clears validation and now reaches the DNS-dependent code, surfacing the *other*,
 gap above (`500 Internal Server Error`) — so both issues are real and independent; fixing the
 DNS gap alone would not have been sufficient, and this test would have kept 422ing forever.
 
+## Fixed (2026-07-20) — per-consumer wildcard DNS/Ingress gap closed for group routes
+
+The gap described just above (`POST /`, `DELETE /{consumer_name}/{name}` 500ing because no
+DNS record existed for `*.sonarqube.devopstashtiot.page`) is now closed, mirroring the same
+workaround already in place for ArgoCD's per-consumer wildcard:
+
+1. **Cloudflare**: a wildcard DNS record `*.sonarqube.devopstashtiot.page` (proxied) was added.
+2. **In-cluster CoreDNS** (`kube-system/coredns` ConfigMap, `kubectl`-applied, not GitOps-tracked
+   — same as the other 7 rewrite rules): `rewrite name regex (.*)\.sonarqube\.devopstashtiot\.page
+   ingress-nginx-controller.ingress-nginx.svc.cluster.local answer auto`. Routed through
+   `ingress-nginx-controller` (not straight to the backend Service, which is plain HTTP only on
+   `9000/TCP`) to keep the real Cloudflare Origin Cert — same reasoning as every other tool's
+   rewrite rule in this file's ArgoCD counterpart.
+3. **`devtools-provision/devtools/sonarqube/values.yaml`**: added a second `ingress.hosts` entry,
+   `"*.sonarqube.devopstashtiot.page"`, so ingress-nginx actually has a rule to route the wildcard
+   host to (a CoreDNS rewrite alone doesn't create routing — nginx 404s on any host it has no
+   `Ingress` rule for).
+
+**Real bug hit and fixed along the way**: adding the wildcard host value broke Helm templating.
+The vendored chart's `charts/sonarqube/templates/ingress.yaml` rendered `host: {{ printf "%s"
+.name }}` unquoted — for the existing plain hostname this was harmless, but
+`*.sonarqube.devopstashtiot.page` rendered as `host: *.sonarqube.devopstashtiot.page`, and a bare
+leading `*` in YAml is an alias-reference token, not a literal string, so Helm's own YAML→JSON
+conversion failed: `error converting YAML to JSON: yaml: line 25: did not find expected
+alphabetic or numeric character`. Confirmed live: ArgoCD's `sonarqube` Application went to a
+permanent `ComparisonError` and silently kept serving the old, unsynced Ingress. Fixed by
+quoting the templated value (`{{ printf "%s" .name | quote }}`) — verified locally with `helm
+template` before re-pushing, then confirmed live: `ArgoCD` synced cleanly and the Ingress now
+lists both hosts.
+
+**Verified live end-to-end**: `python3 -c "import socket; socket.gethostbyname(...)"` from
+inside the `devops-api` pod resolves `netanel.sonarqube.devopstashtiot.page` to
+`ingress-nginx-controller`'s ClusterIP, and a direct HTTPS request to it returns a real `200
+{"status":"UP"}` from the one shared SonarQube instance. Re-ran
+`test_create_and_delete_group_full_flow` (previously blocked by this gap) against the live
+cluster: **passes** — group create, both permission sets, and delete all confirmed against the
+real SonarQube API directly, not just devops-api's response.
+
+Same caveat as ArgoCD's equivalent wildcard: this is **one shared instance behind the wildcard**,
+not real per-consumer isolation — good enough to exercise `_build_client()`'s live code path
+end-to-end, nothing more.
+
+## Fixed (2026-07-21) — rollback never fired for permission-assignment failures
+
+`POST /`'s rollback logic previously read the wrong exception type for the failure it's most
+likely to actually see. `routes.py`'s `create_new_group` had one `try` wrapping
+`create_group` → `assign_global_permissions` → `assign_template_permissions`, with `except
+HTTPException` returning an error response and a separate bare `except:` doing the rollback
+(`delete_group`). But `_handle_response` (`operations.py:15-22`) turns *any* non-2xx SonarQube
+response into an `HTTPException` — so a failure in either permission-assignment step (the far
+more likely real-world failure than `create_group` itself failing) landed in the `except
+HTTPException` branch, which never rolled back. Net effect: a group could be created on
+SonarQube's side with 0-4 of 5 global permissions and no template permissions, reported to the
+caller as `"Failed"`, with no cleanup — an orphaned, partially-configured group.
+
+Fixed with a `created` flag set immediately after `create_group()` succeeds: the `except
+HTTPException` branch now rolls back only when `created` is `True` (i.e. the failure happened
+in a permission step, not in `create_group` itself — an HTTPException from `create_group` itself,
+e.g. "group already exists", still correctly skips rollback since nothing new was created). The
+bare `except:` branch (unexpected/non-HTTPException errors, e.g. a raw network exception) is
+unchanged — it already rolled back unconditionally regardless of which step failed, which was
+correct and is covered by the pre-existing `test_create_group_unexpected_error_triggers_rollback`.
+
+New regression test: `test_create_group_permission_failure_triggers_rollback`
+(`tests/v1/sonarqube/test_sonarqube_routes.py`) — create succeeds, the first global-permission
+call 500s, asserts the rollback delete call fires.
+
 ## SonarQube REST API calls
 
 ### Create group — `POST /api/user_groups/create`
@@ -301,7 +368,14 @@ they'd need to be wired into `_build_client()` itself, not just declared in `con
 
 Tests mock `BaseAPI` via an autouse fixture in `conftest.py` — `patch_base_api` patches `app.v1.sonarqube.routes.BaseAPI` so `_build_client()` returns the shared mock without making real HTTP calls. `mock_git` (also in `conftest.py`) covers the consumer-config routes the same way.
 
-- `test_sonarqube_routes.py` — unit tests (mocked) for all 6 routes: group create/delete, `GET /sizes`, `POST/PUT/DELETE /consumer/*`.
-- `test_sonarqube_schema.py` — pydantic validation edge cases.
+- `test_sonarqube_routes.py` — unit tests (mocked) for all 6 routes: group create/delete
+  (including the rollback-on-permission-failure regression test above and a hostname regression
+  test on `_build_client`'s exact per-consumer URL), `GET /sizes`, `POST/PUT/DELETE /consumer/*`.
+- `test_sonarqube_schema.py` — pydantic validation edge cases for `GroupSpec`,
+  `SonarQubeConsumerSpec`, and `SonarQubeConsumerUpdateSpec` (including the plugin-entry
+  comma/quote validator and exact `max_length` boundaries).
 - `test_sonarqube_group_e2e.py` — real e2e: group create/delete against a live SonarQube instance.
-- `test_sonarqube_consumer_e2e.py` — real e2e: consumer config create/update/delete against a live Bitbucket GitOps repo, plus `GET /sizes`. Its module-scoped setup fixture creates the `ARGO` project / `sonarqube-as-a-service` repo if missing (see "Live environment note" above) and never tears them down.
+  Uses a `yield`-based `clean_group` fixture (not a plain pre-test call) so a failed assertion
+  mid-test can't leave a real leftover group behind — same fix as Bitbucket's
+  E2ETEST/E2EREPOTEST leftover-project bug, see `app/v1/bitbucket/CLAUDE.md`.
+- `test_sonarqube_consumer_e2e.py` — real e2e: consumer config create/update/delete against a live Bitbucket GitOps repo, plus `GET /sizes`. Its module-scoped setup fixture creates the `ARGO` project / `sonarqube-as-a-service` repo if missing (see "Live environment note" above) and never tears them down. Per-test cleanup uses the same `yield`-based `clean_consumer_config` fixture pattern as `test_sonarqube_group_e2e.py`.

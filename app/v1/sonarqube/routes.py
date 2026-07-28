@@ -29,12 +29,22 @@ def get_v1_sonarqube_router(git: Git):
     @router.post("/", name="create sonarqube group", status_code=200)
     async def create_new_group(payload: SonarQubeGroupRequest) -> JSONResponse:
         client = _build_client(payload.spec.consumer_name)
+        created = False
         try:
             await create_group(client, payload.spec)
+            created = True
             await assign_global_permissions(client, payload.spec)
             await assign_template_permissions(client, payload.spec)
             return SuccessResponse(status="successful")
         except HTTPException as external_error:
+            # Only roll back if create_group() itself already succeeded — an HTTPException
+            # from create_group (e.g. group already exists) means nothing new was created,
+            # so there's nothing to delete. An HTTPException from either permission-assignment
+            # step means a real group now exists in a partially-configured state and must be
+            # cleaned up, same as the bare `except` below already did for non-HTTPException
+            # failures at any step.
+            if created:
+                await delete_group(client, payload.spec)
             return JSONResponse(
                 ExceptionResponse(
                     stdout=f"Exception in SonarQube. {external_error.detail}",

@@ -51,6 +51,17 @@ def _delete_group_if_exists(sonar: httpx.Client, name: str):
     assert r.status_code in (204, 404)
 
 
+@pytest.fixture
+def clean_group(sonar):
+    # Cleanup via `yield` (not a plain call at the top of the test) — this runs the teardown
+    # line even if the test fails partway through, so a failed assertion between create and
+    # delete can't leave a real leftover group behind. Same class of bug fixed for Bitbucket's
+    # E2ETEST/E2EREPOTEST leftover projects — see app/v1/bitbucket/CLAUDE.md.
+    _delete_group_if_exists(sonar, GROUP_NAME)
+    yield GROUP_NAME
+    _delete_group_if_exists(sonar, GROUP_NAME)
+
+
 def _get_global_permissions_for_group(sonar: httpx.Client, name: str) -> set:
     permissions = set()
     for perm in EXPECTED_GLOBAL_PERMISSIONS:
@@ -76,10 +87,7 @@ def _get_template_permissions_for_group(sonar: httpx.Client, name: str) -> set:
 
 
 @pytest.mark.integration
-def test_create_and_delete_group_full_flow(sonar, api):
-    # --- clean state ---
-    _delete_group_if_exists(sonar, GROUP_NAME)
-
+def test_create_and_delete_group_full_flow(sonar, api, clean_group):
     r = sonar.get("/api/user_groups/search", params={"q": GROUP_NAME})
     assert r.status_code == 200
     assert r.json()["paging"]["total"] == 0
