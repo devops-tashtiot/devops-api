@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 
 - Mirror this repo to Bitbucket on every push ([e2ebe14](https://github.com/devops-tashtiot/devops-api/commit/e2ebe1463dabb31d77415cc632fdce1d0f9c7eb9))
 
+### Refactor
+
+- *(ci)* Mirror into the shared devops-tashtiot Bitbucket project ([36d2b42](https://github.com/devops-tashtiot/devops-api/commit/36d2b42621c4095a03f18fe724d5d62da02041d2))
+
 ## [0.3.4] - 2026-07-20
 
 ### Bug Fixes
