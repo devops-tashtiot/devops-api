@@ -25,25 +25,32 @@ jobs:
 
       - name: Ensure the Bitbucket project/repo exist (self-healing after a platform rebuild)
         env:
-          CF_HEADERS: -H "CF-Access-Client-Id: ${{ secrets.CF_ACCESS_CLIENT_ID }}" -H "CF-Access-Client-Secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}"
+          CF_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+          BB_PASSWORD: ${{ secrets.BITBUCKET_ADMIN_PASSWORD }}
         run: |
-          auth=(-u "admin:${{ secrets.BITBUCKET_ADMIN_PASSWORD }}")
           base="https://bitbucket.devopstashtiot.page/rest/api/latest"
+          call() {
+            curl -sf -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" "$@"
+          }
+          status() {
+            curl -s -o /dev/null -w "%{http_code}" -u "admin:$BB_PASSWORD" -H "CF-Access-Client-Id: $CF_ID" -H "CF-Access-Client-Secret: $CF_SECRET" "$@"
+          }
 
-          project_status=$(curl -s -o /dev/null -w "%{http_code}" "${auth[@]}" $CF_HEADERS "$base/projects/DEVOPSAPI")
+          project_status=$(status "$base/projects/DEVOPSAPI")
           if [ "$project_status" = "404" ]; then
             echo "DEVOPSAPI project missing — creating it"
-            curl -sf "${auth[@]}" $CF_HEADERS -X POST "$base/projects" -H "Content-Type: application/json" \
+            call -X POST "$base/projects" -H "Content-Type: application/json" \
               -d '{"key":"DEVOPSAPI","name":"devops-api","description":"Mirror of github.com/devops-tashtiot/devops-api (GitHub is source of truth)"}'
           elif [ "$project_status" != "200" ]; then
             echo "::error::Unexpected status $project_status checking for the DEVOPSAPI project"
             exit 1
           fi
 
-          repo_status=$(curl -s -o /dev/null -w "%{http_code}" "${auth[@]}" $CF_HEADERS "$base/projects/DEVOPSAPI/repos/devops-api")
+          repo_status=$(status "$base/projects/DEVOPSAPI/repos/devops-api")
           if [ "$repo_status" = "404" ]; then
             echo "devops-api repo missing — creating it"
-            curl -sf "${auth[@]}" $CF_HEADERS -X POST "$base/projects/DEVOPSAPI/repos" -H "Content-Type: application/json" \
+            call -X POST "$base/projects/DEVOPSAPI/repos" -H "Content-Type: application/json" \
               -d '{"name":"devops-api","scmId":"git"}'
           elif [ "$repo_status" != "200" ]; then
             echo "::error::Unexpected status $repo_status checking for the devops-api repo"
