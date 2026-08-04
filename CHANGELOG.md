@@ -7,6 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Bug Fixes
 
 - *(argocd)* Close cluster-secret race, drop hardcoded config namespace whitelist ([618004c](https://github.com/devops-tashtiot/devops-api/commit/618004caeb8548ebbc460b581d2ee36b2335df2e))
+- *(ci)* Quote CF-Access header values so the mirror workflow YAML parses ([51f991d](https://github.com/devops-tashtiot/devops-api/commit/51f991d3b6d4904d16b23abf3bc20abc59badcd4))
 
 ### Build
 
