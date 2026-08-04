@@ -18,6 +18,10 @@ All notable changes to this project will be documented in this file.
 
 - Mirror this repo to Bitbucket on every push ([e2ebe14](https://github.com/devops-tashtiot/devops-api/commit/e2ebe1463dabb31d77415cc632fdce1d0f9c7eb9))
 
+### Documentation
+
+- *(argocd)* Document the Bitbucket project consolidation ([e94ed09](https://github.com/devops-tashtiot/devops-api/commit/e94ed09a93e7ba39de4e3a32d0a9dd73cf65c1a3))
+
 ### Refactor
 
 - *(ci)* Mirror into the shared devops-tashtiot Bitbucket project ([36d2b42](https://github.com/devops-tashtiot/devops-api/commit/36d2b42621c4095a03f18fe724d5d62da02041d2))
