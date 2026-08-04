@@ -239,6 +239,17 @@ endpoint exists to toggle it, `/admin/permissions/anonymous` and `/admin/setting
 against a `SYS_ADMIN` token), so ArgoCD needs no registered repository-credential Secret at all
 for this repo.
 
+**2026-08-04 update:** the Bitbucket `ARGO` project was consolidated into a shared
+`devops-tashtiot` project (alongside GitHub->Bitbucket mirrors for `devops-api` and
+`a-woodpecker-plugins` — one project for everything instead of one per repo/purpose).
+`ARGOCD_CLUSTER_SECRET_REPO_URL` now points at
+`https://bitbucket.devopstashtiot.page/scm/devopstashtiot/argocd.git`, and `GIT_PROJECT_KEY`
+(shared with the sonarqube module's own Git client) is now `DEVOPSTASHTIOT`. The `sonarqube-as-
+a-service` repo moved in the same operation, for exactly this reason — `GIT_PROJECT_KEY` has no
+per-module override, so both repos had to live under the same project key or one module would
+silently break. The old `ARGO` project no longer exists. Public read access on the `argocd` repo
+was confirmed to survive the move.
+
 Live-testing `POST /cluster-secret` with those fixes in place surfaced a **new, previously
 unreached blocker**: `_check_cluster_permissions()` (`operations.py:12`) shells out to `kubectl
 auth can-i ...` as a subprocess, but **the `devops-api` container image did not have `kubectl`
