@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.3.5] - 2026-07-28
+## [0.3.5] - 2026-08-04
 
 ### Bug Fixes
 
@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 ### Build
 
 - Migrate packaging from pip/requirements.txt to uv ([9392e56](https://github.com/devops-tashtiot/devops-api/commit/9392e563ef714f37adbc2f6b17185e4d9d106b55))
+
+### CI/CD
+
+- Mirror this repo to Bitbucket on every push ([e2ebe14](https://github.com/devops-tashtiot/devops-api/commit/e2ebe1463dabb31d77415cc632fdce1d0f9c7eb9))
 
 ## [0.3.4] - 2026-07-20
 
