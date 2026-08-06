@@ -57,25 +57,32 @@ __all__ = [
 ]
 
 
+from pydantic import BaseModel, ConfigDict, Field
+
+class IgnoredMetadata(BaseModel):
+    """Schema solely for OpenAPI documentation purposes. All fields are optional
+    and extra fields are allowed, ensuring FastAPI never fails validation for metadata."""
+    model_config = ConfigDict(extra="allow")
+    
+    project: Optional[str] = Field(default=None, description="Project name")
+    network: Optional[str] = Field(default=None, description="Network segment")
+    region: Optional[str] = Field(default=None, description="Region")
+    space: Optional[str] = Field(default=None, description="Space")
+    environment: Optional[str] = Field(default=None, description="Environment")
+    island: Optional[str] = Field(default=None, description="Island")
+
 class AnyMetadataRequest(OperationRequest):
-    """Drop-in replacement for ``OperationRequest`` that accepts ``metadata`` as an
-    optional, unvalidated free-form dict.
+    """Drop-in replacement for ``OperationRequest`` that documents the ``metadata``
+    field for clients (Swagger/OpenAPI) but relaxes all validation.
 
-    The library's ``OperationRequest`` enforces a strict ``MetadataRequest`` schema
-    (``project``, ``network``, ``region``, ``space``, ``environment`` all required).
-    In practice our routes never read or act on ``metadata`` — it is purely informational
-    context carried by the caller. Requiring callers to always supply every metadata field
-    adds friction and breaks when new optional fields are added to the schema.
-
-    This class overrides ``metadata`` with ``Any`` and ``exclude=True`` so the field is
-    accepted silently for any shape (or omitted entirely) without any validation, and
-    is completely ignored by the API.
+    The library's ``OperationRequest`` enforces a strict ``MetadataRequest`` schema.
+    In practice our routes do not handle ``metadata`` directly (it is handled externally),
+    but clients still need to see the expected shape in the API documentation.
     """
 
-    metadata: Any = Field(
-        default=None,
-        exclude=True,
-        description="Free-form request metadata — accepted but not validated or used by the API.",
+    metadata: IgnoredMetadata = Field(
+        default_factory=IgnoredMetadata,
+        description="Request metadata (handled externally, ignored by application logic).",
     )
 
 
