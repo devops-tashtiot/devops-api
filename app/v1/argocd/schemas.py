@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal, Optional, Union
 from enum import Enum
 
 from app.global_conf import global_config
+from app.v1.response_schemas import AnyMetadataRequest
 from tashtiot_apis_library import OperationRequest
 
 # g lines: g, <subject>, <role>
@@ -215,14 +216,14 @@ class ConsumerConfigSpec(BaseModel):
     )
 
 
-class ConsumerConfigRequest(OperationRequest):
+class ConsumerConfigRequest(AnyMetadataRequest):
     spec: ConsumerConfigSpec
 
 
-class ClusterSecretRequest(OperationRequest):
+class ClusterSecretRequest(AnyMetadataRequest):
     spec: ClusterSecretSpec
 
 
-class ClusterSecretUpdateRequest(OperationRequest):
+class ClusterSecretUpdateRequest(AnyMetadataRequest):
     spec: ClusterSecretUpdateSpec
 

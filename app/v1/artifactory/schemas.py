@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 from enum import Enum
-from tashtiot_apis_library import OperationRequest
+from app.v1.response_schemas import AnyMetadataRequest
 
 
 class MemberType(str, Enum):
@@ -91,15 +91,15 @@ class ProjectSpec(BaseModel):
         return self.name.lower().replace(" ", "-").replace("_", "-")
 
 
-class ArtifactoryProjectRequest(OperationRequest):
+class ArtifactoryProjectRequest(AnyMetadataRequest):
     spec: ProjectSpec
 
 
-class ArtifactoryStorageQuotaRequest(OperationRequest):
+class ArtifactoryStorageQuotaRequest(AnyMetadataRequest):
     spec: StorageQuotaBytes
 
 
-class ArtifactoryPermissionRequest(OperationRequest):
+class ArtifactoryPermissionRequest(AnyMetadataRequest):
     spec: ProjectPermissionSpec
 
 
@@ -113,5 +113,5 @@ class XrayVulnUpdateSpec(BaseModel):
     )
 
 
-class ArtifactoryXrayUpdateRequest(OperationRequest):
+class ArtifactoryXrayUpdateRequest(AnyMetadataRequest):
     spec: XrayVulnUpdateSpec

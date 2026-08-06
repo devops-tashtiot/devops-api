@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field, model_validator
-from tashtiot_apis_library import OperationRequest
+from app.v1.response_schemas import AnyMetadataRequest
 
 from app.global_conf import global_config
 
@@ -86,13 +86,13 @@ class GroupSpec(BaseModel):
     )
 
 
-class SonarQubeGroupRequest(OperationRequest):
+class SonarQubeGroupRequest(AnyMetadataRequest):
     spec: GroupSpec
 
 
-class SonarQubeConsumerRequest(OperationRequest):
+class SonarQubeConsumerRequest(AnyMetadataRequest):
     spec: SonarQubeConsumerSpec
 
 
-class SonarQubeConsumerUpdateRequest(OperationRequest):
+class SonarQubeConsumerUpdateRequest(AnyMetadataRequest):
     spec: SonarQubeConsumerUpdateSpec

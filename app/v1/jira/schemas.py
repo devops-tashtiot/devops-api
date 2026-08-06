@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Optional
-from tashtiot_apis_library import OperationRequest
+from app.v1.response_schemas import AnyMetadataRequest
 
 
 class ProjectSpec(BaseModel):
@@ -48,5 +48,5 @@ class ProjectSpec(BaseModel):
     )
 
 
-class JiraProjectRequest(OperationRequest):
+class JiraProjectRequest(AnyMetadataRequest):
     spec: ProjectSpec

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
 from typing import Optional
-from tashtiot_apis_library import OperationRequest
+from app.v1.response_schemas import AnyMetadataRequest
 
 
 class SpaceSpec(BaseModel):
@@ -113,21 +113,21 @@ class PluginUploadSpec(BaseModel):
         return v
 
 
-class ConfluenceSpaceRequest(OperationRequest):
+class ConfluenceSpaceRequest(AnyMetadataRequest):
     spec: SpaceSpec
 
 
-class ConfluencePluginInstallRequest(OperationRequest):
+class ConfluencePluginInstallRequest(AnyMetadataRequest):
     spec: PluginInstallSpec
 
 
-class ConfluencePluginUploadRequest(OperationRequest):
+class ConfluencePluginUploadRequest(AnyMetadataRequest):
     spec: PluginUploadSpec
 
 
-class ConfluenceSpaceExportRequest(OperationRequest):
+class ConfluenceSpaceExportRequest(AnyMetadataRequest):
     spec: SpaceExportSpec
 
 
-class ConfluenceSpaceImportRequest(OperationRequest):
+class ConfluenceSpaceImportRequest(AnyMetadataRequest):
     spec: SpaceImportSpec

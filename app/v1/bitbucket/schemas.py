@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
-from tashtiot_apis_library import OperationRequest
+from app.v1.response_schemas import AnyMetadataRequest
 
 
 
@@ -56,5 +56,5 @@ class ProjectSpec(BaseModel):
         return self
 
 
-class BitbucketProjectRequest(OperationRequest):
+class BitbucketProjectRequest(AnyMetadataRequest):
     spec: ProjectSpec
