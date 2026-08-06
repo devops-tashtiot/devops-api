@@ -32,6 +32,12 @@ To develop against a local checkout of the library instead of the pinned wheel U
 tashtiot-apis-library = { path = "../apis-library", editable = true }
 ```
 
+**Also one-time**: `git config core.hooksPath .githooks` — activates a `pre-push` hook that
+refuses any push whose remote URL contains `github.com` (Bitbucket is the source of truth; see
+"Bitbucket is the source of truth for this repo" below). This is a local convenience check only,
+bypassable with `--no-verify` or by skipping this step — the real enforcement is GitHub branch
+protection.
+
 ## Commands
 
 ```bash
@@ -74,110 +80,99 @@ The app is a FastAPI service that orchestrates DNS records, HAProxy load-balance
 
 **Connector usage rule** — always import and use the high-level service classes (`ArgoCD`, `Git`, `Vault`, `AWX`) from `tashtiot_apis_library`. Never import or instantiate the low-level `*Client` classes (e.g. `ArgoCDClient`, `GitClient`) directly — those are internal implementation details of the library. Each service class is instantiated once in `app/main.py:create_app()` and passed into router factories. See `app/v1/haproxy/operations.py` as the reference pattern for ArgoCD.
 
-**Inbound auth (`tashtiot_apis_library` >= v1.0.0)** — `app/main.py` builds the app with
-`general_create_app(enable_auth=True)`. That flag alone changes nothing: the library's
-`AuthMiddleware` (which would protect every route except `/health`, `/metrics`, `/docs`,
-`/redoc`, `/openapi.json`, `/static`, `/.well-known`, and probes) only actually activates when
-the env var `AUTH_ENABLED=true` **and** exactly one verification-material source (`AUTH_HS256_SECRET`,
-`AUTH_PUBLIC_KEY_PEM`/`AUTH_PUBLIC_KEY_PATH`, or `AUTH_JWKS_URL`/`AUTH_OIDC_ISSUER`) is also set —
-zero or more than one raises `AuthConfigError` at startup. These `AUTH_*` vars are read directly
-by the library's own internal settings object, not by this app's `global_conf.py` — there is
-nothing to wire in Python beyond the `enable_auth=True` flag itself. See `.env.example`'s
-"Inbound auth" block for the full variable list and a local-dev token recipe (`gen-auth-material`,
-a console script the library installs).
+### Inbound auth
 
-This platform's real identity provider for this is Keycloak (`rhbk`, deployed via
-`clusters-provision`/`clusters-definition` — issuer `https://rhbk.devopstashtiot.page/realms/devtools`).
-A `devops-api` client + `devops-api-audience` client scope (audience mapper) exist in that realm
+`app/main.py` builds the app with `general_create_app(enable_auth=True)`. That flag alone
+changes nothing: the library's `AuthMiddleware` (protects every route except `/health`,
+`/metrics`, `/docs`, `/redoc`, `/openapi.json`, `/static`, `/.well-known`, and probes) only
+actually activates when the env var `AUTH_ENABLED=true` **and** exactly one verification-material
+source (`AUTH_HS256_SECRET`, `AUTH_PUBLIC_KEY_PEM`/`AUTH_PUBLIC_KEY_PATH`, or
+`AUTH_JWKS_URL`/`AUTH_OIDC_ISSUER`) is also set — zero or more than one raises `AuthConfigError`
+at startup. These `AUTH_*` vars are read directly by the library's own internal settings object,
+not by this app's `global_conf.py`. See `.env.example`'s "Inbound auth" block for the full
+variable list and a local-dev token recipe (`gen-auth-material`, a console script the library
+installs).
+
+The real identity provider is Keycloak (`rhbk`, deployed via `clusters-provision`/
+`clusters-definition` — issuer `https://rhbk.devopstashtiot.page/realms/devtools`). A
+`devops-api` client + `devops-api-audience` client scope (audience mapper) exist in that realm
 for this purpose — see `clusters-provision/clusters/rhbk/CLAUDE.md` (or `values.yaml`/
-`realm-import.yaml`/`provision-oidc-clients-job.yaml` directly) for how it's provisioned, and
-`devtools-definition/devtools/devops-api/values.yaml` for the live `AUTH_*` env values actually
+`realm-import.yaml`/`provision-oidc-clients-job.yaml`) for how it's provisioned, and
+`devtools-definition/devtools/devops-api/values.yaml` for the live `AUTH_*` values actually
 deployed.
 
-**Disabled as of 2026-07-15 (explicit decision, reversing the note below)** — `AUTH_ENABLED` is
-now `"false"` in the live deployment: every route is open again, no Bearer token required. No
-confirmed real caller of devops-api was ever found to actually need this (only ad-hoc test
-tokens exercised it), and it was adding friction to every e2e suite without a concrete threat it
-was mitigating. `AUTH_OIDC_ISSUER`/`AUTH_AUDIENCE` are left populated in `devtools-definition`
-(inert while disabled) so re-enabling later is just flipping `AUTH_ENABLED` back to `"true"` —
-no need to rediscover those values. The e2e test suites' token-minting helper
-(`_api_auth_headers()`, previously present in `tests/v1/{argocd,jira,bitbucket,sonarqube}/*_e2e.py`)
-was removed accordingly; re-add it (see git history around 2026-07-15 for the exact pattern) if
-auth is re-enabled.
+**Currently disabled** — `AUTH_ENABLED` is `"false"` in the live deployment: every route is open,
+no Bearer token required. No confirmed real caller of devops-api ever needed it (only ad-hoc test
+tokens exercised it), and it added friction to every e2e suite without a concrete threat it
+mitigated. `AUTH_OIDC_ISSUER`/`AUTH_AUDIENCE` are left populated in `devtools-definition` (inert
+while disabled) so re-enabling later is just flipping `AUTH_ENABLED` back to `"true"`. The e2e
+suites' token-minting helper (`_api_auth_headers()`, previously in
+`tests/v1/{argocd,jira,bitbucket,sonarqube}/*_e2e.py`) was removed when auth was disabled; re-add
+it (see git history around 2026-07-15 for the pattern) if it's ever turned back on.
 
-The rest of this section documents the *prior* enabled state, kept for when/if it's turned back
-on:
-
-~~**As of the last update here, `AUTH_ENABLED` is set to `true` in that live deployment**
-— every route (minus the exclude list) requires a valid Bearer token issued by that Keycloak
-realm with `aud: devops-api`. No caller of devops-api was found documented anywhere in this
-platform at the time this was enabled (only Cloudflare-Access-gated human access and
-unauthenticated in-cluster access were confirmed) — if something *does* call devops-api
-programmatically and breaks after this, it needs a real token via the `client_credentials` grant
-against the Keycloak client scope above, not a revert of this setting.~~
-
-**Verified end-to-end live** (2026-07-14, while still enabled): no-token → `401`; a real
-Keycloak-issued token (via `client_credentials` against a temporary test client granted the
-`devops-api-audience` scope, deleted after) → `200` with real route data; `/docs`/`/openapi.json`
-stay open. Two real gotchas hit along the way, both fixed, worth knowing if this gets re-enabled:
-
-1. **`AUTH_OIDC_ISSUER` must be the real public `https://rhbk.devopstashtiot.page/realms/devtools`
-   hostname — not what you get by querying Keycloak's ClusterIP directly.** Decoding a token
-   fetched via `rhbk-service.rhbk.svc.cluster.local:8080` directly (bypassing ingress-nginx)
-   showed `iss: http://rhbk.devopstashtiot.page:8080/...` — Keycloak's own hostname resolution
-   falling back to its internal scheme+port with no `X-Forwarded-Proto` to trust. That's an
-   artifact of skipping the proxy, not what any real caller receives; fetching a token through
-   the actual public hostname (matching how `argocd`/`sonarqube` are already configured) gives
-   back the correct `https://` issuer. Don't "fix" `AUTH_OIDC_ISSUER` to the `http://...:8080`
-   form based on a ClusterIP-direct test — verify through the real ingress path.
-2. **`rhbk.devopstashtiot.page` had no CoreDNS rewrite rule** (see the argocd module's CLAUDE.md
-   for the full rewrite-workaround background) — the one tool on this domain without one. This
-   meant devops-api's own outbound JWKS-fetch call (needed on every request to verify a token's
-   signature, not just at startup — OIDC discovery succeeds at startup regardless, so a clean
-   startup log does *not* mean JWKS fetching will work) went out through real Cloudflare DNS and
-   hit Access's email-OTP wall: `JWKS key resolution failed: ... HTTP Error 403: Forbidden`,
-   surfaced as every request 401ing with "Unable to verify token" even with a valid token. Fixed
-   by adding `rhbk.devopstashtiot.page` to the `kube-system/coredns` ConfigMap's rewrite rules
-   (same pattern as the other six, routed through `ingress-nginx-controller` for the real
-   Cloudflare Origin Cert) — applied directly via `kubectl`, not tracked in any GitOps repo, same
-   as the rest of that ConfigMap.
-
-**Also worth knowing:** devops-api's env vars are injected via `envFrom: configMapRef` (the
-`devops-api-env` ConfigMap), not inline `env:` entries. Kubernetes does **not** restart pods when
-a referenced ConfigMap's contents change — after any `devtools-definition` env-value change
-(including `AUTH_*`), the already-running pod keeps using whatever it read at its own startup
-until something restarts it. ArgoCD syncing the ConfigMap is not enough by itself; either wait for
-the next `image.tag` bump (which does force a new pod via the image change) or run `kubectl
-rollout restart deployment/devops-api -n devops-api` manually. Learned this the hard way
-verifying the fix above — the ConfigMap had the corrected value while the running pod still
-rejected every token with the stale one.
+**Gotchas worth knowing if re-enabling:**
+1. **`AUTH_OIDC_ISSUER` must be the real public hostname**
+   (`https://rhbk.devopstashtiot.page/realms/devtools`), not Keycloak's ClusterIP. A token fetched
+   by bypassing ingress (hitting the ClusterIP directly) carries `iss:
+   http://rhbk.devopstashtiot.page:8080/...` — Keycloak's own fallback with no
+   `X-Forwarded-Proto` to trust — and fails verification. Fetch through the real public hostname
+   to get the correct `https://` issuer.
+2. **Every `*.devopstashtiot.page` hostname devops-api calls out to needs a CoreDNS rewrite
+   rule** (see `app/v1/argocd/CLAUDE.md`'s CoreDNS section for the full mechanism). Without one,
+   an outbound call — e.g. the JWKS fetch needed on every request to verify a token's signature,
+   not just at startup — goes out through real Cloudflare DNS and hits Access's email-OTP wall,
+   surfacing as every request 401ing with "Unable to verify token" even with a valid token.
+3. **ConfigMap changes don't restart pods.** devops-api's env vars are injected via
+   `envFrom: configMapRef` (`devops-api-env`), and Kubernetes does not restart pods when a
+   referenced ConfigMap's contents change. After any `devtools-definition` env-value change
+   (including `AUTH_*`), either wait for the next `image.tag` bump (forces a new pod) or run
+   `kubectl rollout restart deployment/devops-api -n devops-api` manually — ArgoCD showing
+   `Synced` is not sufficient by itself; confirm with `env | grep <VAR>` inside the new pod.
 
 **Tests** — `tests/v1/` and `tests/v2/` mirror the app structure. Fixtures (client, mock clients, sample payloads) live in `conftest.py` files at each level. `pytest.ini` sets `pythonpath = .` so imports start from the repo root.
 
-**CI** — GitHub Actions, `.github/workflows/docker-publish.yml`, is the *actual* active
-pipeline (do not trust `.woodpecker/build.yaml` — it targets a different registry
-(`artifactory.app.com`), its one step only runs `when: event: tag`, and no tag-push happens
-in normal workflow, so it never actually builds anything; treat it as dead/vestigial).
+**CI is effectively off on the GitHub side.** `.github/workflows/docker-publish.yml` is fully
+**commented out** — Bitbucket is the source of truth for this repo now, GitHub is a read-only
+mirror, and running a build/release pipeline against a read-only mirror didn't make sense. Also
+still present but dead/vestigial: `.woodpecker/build.yaml` (targets a different registry,
+`artifactory.app.com`, and its one step only runs `when: event: tag` with no tag-push in normal
+workflow — never trust it). The only *active* pipeline touching this repo's git history at all is
+`.woodpecker/mirror-to-github.yml` (see "Bitbucket is the source of truth" below).
 
-The GitHub Actions workflow fires on **every push to `master`** (not just tags), unless the
-commit message contains `chore(release):` (guards against its own bump commits looping). On
-each qualifying push it, in order:
+**What `docker-publish.yml` used to do**, before being disabled (kept commented out in the file
+for reference, not deleted) — on every push to `master` not containing `chore(release):` in the
+commit message:
+1. Bumped the version via `git-cliff` and wrote `CHANGELOG.md`
+2. Committed `chore(release): vX.Y.Z [skip ci]` and created+pushed a matching git tag
+3. Built and pushed `ghcr.io/devops-tashtiot/devops-api:vX.Y.Z` (and `:latest`)
+4. Cloned `devtools-definition`, `sed`'d the new tag into `devtools/devops-api/values.yaml`,
+   committed, and pushed to its `main`
 
-1. Bumps the version via `git-cliff` (conventional-commit-driven — reads commit message
-   prefixes like `fix:`/`feat:` to decide the version bump) and writes `CHANGELOG.md`
-2. Commits `chore(release): vX.Y.Z [skip ci]` and creates+pushes a matching git tag
-3. Builds and pushes `ghcr.io/devops-tashtiot/devops-api:vX.Y.Z` (and `:latest`)
-4. Clones `devtools-definition`, `sed`s the new tag into
-   `devtools/devops-api/values.yaml`, commits, and pushes to its `main` — **no manual
-   version bump in `devtools-definition` is needed or expected; a bot does it
-   automatically within ~1 minute of your push.**
+None of that happens automatically anymore — **there is currently no CI path that builds/pushes a
+new `devops-api` image or bumps `devtools-definition`'s tag.** If that automation is still
+needed, it has to be rebuilt as a Woodpecker pipeline triggered by a Bitbucket push (matching the
+pattern `a-woodpecker-plugins` already uses), not re-enabled as a GitHub Actions workflow — a
+GitHub Actions push (`secrets.RELEASE_PAT`, an org-level secret on `devops-tashtiot` set up for
+this, owner `netanelzucaim`) would work against the current branch protection, but there's no
+reason to run CI against the mirror instead of the source of truth.
 
-Net effect: **a plain `git push` to this repo's `master` is a full release+deploy** — ArgoCD
-picks up the `devtools-definition` bump and rolls the new image out on its own. There is no
-separate "cut a release" step to remember. To check whether a given push actually shipped:
-`gh run list --repo devops-tashtiot/devops-api` (look for a `success` "Build & Publish Docker
-Image" run against your commit), then check `devtools-definition`'s git log for the matching
-`chore(devops-api): bump image tag to vX.Y.Z` commit.
+**Bitbucket is the source of truth for this repo** — push directly into it over HTTPS at
+`bitbucket.devopstashtiot.page` (see the top-level `devops/CLAUDE.md`'s "Bitbucket push access"
+section for the Cloudflare Access service-token headers needed). `.woodpecker/mirror-to-github.yml`
+mirrors every push onward to GitHub with `git push --mirror`. GitHub's `master` branch has push
+restrictions enabled (GitHub branch protection API, `restrictions.users: ["netanelzucaim"]`,
+`enforce_admins: false`, no required PR/status checks) — only that GitHub account can push to it
+directly; every other collaborator is rejected outright. This is a **known-imperfect**
+enforcement: it's identity-based, and the same account is used both for the human's own manual
+pushes and (once wired up) the mirror pipeline's `github_token` secret, so it can't distinguish
+"pushed by automation" from "pushed by hand" — genuine bot-only enforcement would need a
+dedicated GitHub App or machine user, deliberately not set up (tried, decided against for now).
+
+**`github-actions[bot]` can't be branch-protection-allowlisted at all**, for the record — confirmed
+empirically: GitHub's API silently drops any attempt to add `"github-actions"` (or similar) to a
+branch protection rule's `restrictions.apps`; that field is for real installed GitHub Apps, not
+the native Actions bot backing the default `secrets.GITHUB_TOKEN`. This is moot while
+`docker-publish.yml` is disabled, but matters again if it's ever re-enabled or rebuilt.
 
 ---
 
@@ -258,11 +253,10 @@ def api():
 
 @pytest.fixture
 def clean_resource(svc):
-    # Cleanup via `yield` (not a plain call at the top of each test) — this runs the teardown
-    # line even if the test fails partway through, so a failed assertion can't leave a real
-    # leftover resource behind. Confirmed the hard way: a plain pre-test-only cleanup call left
-    # E2ETEST/E2EREPOTEST projects stuck in real Bitbucket after an unrelated auth failure —
-    # see app/v1/bitbucket/CLAUDE.md.
+    # Cleanup via `yield` (not a plain call at the top of each test) so teardown still runs
+    # if the test fails partway through — a plain pre-test-only cleanup call once left real
+    # E2ETEST/E2EREPOTEST projects stuck in Bitbucket after an unrelated auth failure
+    # (see app/v1/bitbucket/CLAUDE.md).
     _delete_if_exists(svc, RESOURCE_KEY)
     yield RESOURCE_KEY
     _delete_if_exists(svc, RESOURCE_KEY)
@@ -275,16 +269,12 @@ def test_create_and_delete(svc, api, clean_resource):
     ...
 ```
 
-See `"Checking all devtool APIs live against the cluster"` below for how to actually *run* this
+See "Checking all devtool APIs live against the cluster" below for how to actually *run* this
 file against the real cluster (SSM, `kubectl cp`, credentials) — this section is about
 structure, that one's about the live-verification workflow.
 
-Rules:
-- Never use a real HTTP client in the unit test files (`routes`/`schema`) — always `AsyncMock`
-- Assert `call_count` to ensure no operation is silently skipped
-- Use `call_args_list` + `c.args[0]` (endpoint) and `c.kwargs["params"]` to verify exact payloads
-- In the e2e file, give every resource-creating test a `yield`-based cleanup fixture, not a
-  plain function call at the top — see `clean_resource` above
+Never use a real HTTP client in the unit test files (`routes`/`schema`) — always `AsyncMock`,
+asserting `call_count` (no operation silently skipped) and exact params via `call_args_list`.
 
 ---
 
@@ -317,7 +307,7 @@ Expected: group appears in the `permissions/groups` response with `"permissions"
 When asked to "check all tools" / "check all APIs work" / "check <service> APIs work", this
 means verifying the deployed devops-api against the **real** Minikube cluster (not local
 docker-compose), for every route in that module — not just spot-checking one endpoint. Follow
-this exact sequence (established doing this for Bitbucket and Jira):
+this sequence:
 
 1. **Confirm AWS creds are live**: `aws sts get-caller-identity` (profile
    `342831714456_Workload-Admin-PS`, region `il-central-1`). If expired (`RequestExpired`),
@@ -343,12 +333,11 @@ this exact sequence (established doing this for Bitbucket and Jira):
    path end-to-end, not a mocked unit test. For anything destructive (create/delete), always
    clean up the test artifact afterward and confirm it's actually gone with a raw call to the
    upstream service directly (not just trusting devops-api's response).
-6. **Cross-check against the upstream service directly** where relevant (e.g. does the raw
-   Bitbucket/Jira/Confluence API agree with what devops-api reported?) — this is how the
-   Bitbucket repo-cascade-delete bug and the Jira mandatory-lead / broken-sync bugs were found.
-   Don't just trust devops-api's response; verify state changed (or didn't) on the real service.
+6. **Cross-check against the upstream service directly** where relevant — don't just trust
+   devops-api's response; verify state changed (or didn't) on the real service. This is how
+   several real bugs documented in the module `CLAUDE.md`s were originally found.
 7. **Document any bug found** in that module's `CLAUDE.md` per the maintenance rule below,
-   including what was tried and the exact live response — not just a description.
+   as a statement of current behavior, not an investigation transcript.
 8. **Write or update a real e2e test** at `tests/v1/<service>/test_<service>_e2e.py` (naming:
    `test_bitbucket_e2e.py`, `test_jira_e2e.py` — no `_project_` in the name) mirroring the
    existing pattern: module-scoped `httpx.Client` fixtures for both the raw service and
@@ -401,8 +390,8 @@ kubectl exec -n devops-api <pod> -- bash -c \
 # ... run tests with API_URL=http://localhost:5001 ...
 ```
 
-The `devops-api` container has **no `ps`, `pkill`, or `curl`** (confirmed — do not assume they
-exist). Work around this:
+The `devops-api` container has **no `ps`, `pkill`, or `curl`** (do not assume they exist).
+Work around this:
 - **HTTP checks**: use `python3 -c "import httpx; print(httpx.get('http://localhost:5001').status_code)"`
   instead of `curl`.
 - **Finding/killing the temp process**: scan `/proc/[pid]/cmdline` directly for the port number
@@ -431,7 +420,9 @@ Every module under `app/v1/` has a `CLAUDE.md` (e.g. `app/v1/sonarqube/CLAUDE.md
 - Adding or removing config fields → update the Config fields table
 - Discovering quirks about the target service's API (e.g. a non-standard status code, a required header, a known broken endpoint) → add a note in the relevant section
 
-The module `CLAUDE.md` is the authoritative developer reference for that service. It must stay in sync with the actual code at all times.
+The module `CLAUDE.md` is the authoritative developer reference for that service — it documents
+*how the system works today*, in present tense, not a log of how it got there. It must stay in
+sync with the actual code at all times.
 
 ---
 
@@ -482,75 +473,43 @@ Only create a new `app/v1/<service>/` directory for an entirely new external ser
 
 ## How to add a new API module
 
-Follow these exact steps every time. Use Bitbucket (`app/v1/bitbucket/`) and Confluence (`app/v1/confluence/`) as reference implementations.
+Use Bitbucket (`app/v1/bitbucket/`) and Confluence (`app/v1/confluence/`) as reference
+implementations. Six steps, in order:
 
-### Step 1 — Create `app/v1/<service>/conf.py`
+**1. `app/v1/<service>/conf.py`** — a `<Service>Config(BaseSettings)` with always exactly three
+fields, and a module-level singleton:
 
 ```python
 from pydantic_settings import BaseSettings
 from pydantic import Field
 
 class <Service>Config(BaseSettings):
+    API_PREFIX: str = Field(default="/api/devops/v1/<service>", description="API prefix for api exposure")
+    <SERVICE>_ENDPOINT: str = Field(default="/rest/api/latest", description="API endpoint for <service>")  # adjust base path
+    API_TAGS: list[str] = Field(default=["v1 - <Service> Operations"], description="OpenAPI tag")
 
-    API_PREFIX: str = Field(
-        default="/api/devops/v1/<service>",
-        description="API prefix for api exposure",
-    )
-
-    <SERVICE>_ENDPOINT: str = Field(
-        default="/rest/api/latest",         # adjust to the actual base path
-        description="API endpoint for <service>",
-    )
-
-    API_TAGS: list[str] = Field(
-        default=["v1 - <Service> Operations"],
-        description="Tags used for OpenAPI documentation grouping.",
-    )
-
-config = <Service>Config()
+config = <Service>Config()   # no model_config needed — global .env loading lives in global_conf.py
 ```
 
-Rules:
-- Class name: `<Service>Config`
-- Always three fields: `API_PREFIX`, `<SERVICE>_ENDPOINT`, `API_TAGS`
-- Module-level singleton: `config = <Service>Config()`
-- No `model_config` needed here — global `.env` loading lives in `global_conf.py`
-
----
-
-### Step 2 — Create `app/v1/<service>/schemas.py`
+**2. `app/v1/<service>/schemas.py`** — one Pydantic model per resource (`ProjectSpec`,
+`SpaceSpec`, ...). Always add `min_length`/`max_length` and `pattern` on string fields that go
+into URLs or payloads:
 
 ```python
 from pydantic import BaseModel, Field
 
 class <Resource>Spec(BaseModel):
-    key: str = Field(
-        ...,
-        description="...",
-        min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
-    )
+    key: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
     name: str = Field(..., min_length=1, max_length=255)
     description: str = Field(..., min_length=1, max_length=1000)
-    admin_user: str = Field(
-        ...,
-        description="user with admin privileges",
-        min_length=1,
-        max_length=50,
-        pattern=r"^[a-z0-9_\-]+$",
-    )
+    admin_user: str = Field(..., min_length=1, max_length=50, pattern=r"^[a-z0-9_\-]+$")
     # add other fields as needed (e.g. public: bool = Field(False, ...))
 ```
 
-Rules:
-- One schema per resource (e.g. `ProjectSpec`, `SpaceSpec`)
-- Use `Field(...)` (required) or `Field(default, ...)` (optional)
-- Always add `min_length`/`max_length` and `pattern` on string fields that go into URLs or payloads
-
----
-
-### Step 3 — Create `app/v1/<service>/operations.py`
+**3. `app/v1/<service>/operations.py`** — always define `_handle_response()` raising
+`HTTPException` on status > 299; every operation function unpacks payload fields, builds the
+endpoint, wraps the call in `try/except`, logs with `logger.error(...)`, and re-raises (never
+swallow — the router handles rollback):
 
 ```python
 from .schemas import <Resource>Spec
@@ -559,22 +518,18 @@ from .conf import config
 from loguru import logger
 from fastapi import HTTPException
 
-
 def _handle_response(response):
     if response.status_code > 299:
         raise HTTPException(status_code=response.status_code, detail=f"errors: {response.text}")
 
-
 async def create_<resource>(<service>_client: Any, payload: <Resource>Spec):
-    key, name, endpoint = payload.key, payload.name, f"{config.<SERVICE>_ENDPOINT}/<resources>"
+    key, endpoint = payload.key, f"{config.<SERVICE>_ENDPOINT}/<resources>"
     try:
-        body = {"key": key, "name": name, ...}
-        response = await <service>_client.post(endpoint, json=body)
+        response = await <service>_client.post(endpoint, json={"key": key, "name": payload.name})
         _handle_response(response)
     except Exception as e:
         logger.error(f"Unexpected error creating <resource> {key}: {str(e)}")
         raise
-
 
 async def delete_<resource>(<service>_client: Any, payload: <Resource>Spec):
     key, endpoint = payload.key, f"{config.<SERVICE>_ENDPOINT}/<resources>/{payload.key}"
@@ -584,29 +539,12 @@ async def delete_<resource>(<service>_client: Any, payload: <Resource>Spec):
     except Exception as e:
         logger.error(f"Unexpected error deleting <resource> {key}: {str(e)}")
         raise
-
-
-async def assign_admin_permission(<service>_client: Any, payload: <Resource>Spec):
-    key, admin_user = payload.key, payload.admin_user
-    # Use query params, same pattern as Bitbucket:
-    endpoint = f"{config.<SERVICE>_ENDPOINT}/<resources>/{key}/permission?username={admin_user}&permission=ADMIN"
-    try:
-        response = await <service>_client.put(endpoint)
-        _handle_response(response)
-    except Exception as e:
-        logger.error(f"Unexpected error assigning admin to <resource> {key}: {str(e)}")
-        raise
 ```
 
-Rules:
-- Always define `_handle_response(response)` — raises `HTTPException` on status > 299
-- Every function: unpack payload fields at the top, build `endpoint`, wrap body in `try/except`
-- Log with `logger.error(...)` and re-raise on unexpected errors
-- Never swallow exceptions — the router handles rollback
-
----
-
-### Step 4 — Create `app/v1/<service>/routes.py`
+**4. `app/v1/<service>/routes.py`** — factory `get_v1_<service>_router(<service>_client)`, prefix
+and tags from `config`. Create is always `POST /`; **every `POST /` create endpoint must have a
+matching `DELETE /{identifier}`** — no create without a delete. Catch `HTTPException` → return
+`ExceptionResponse`; bare `except` → call delete for rollback:
 
 ```python
 from fastapi import APIRouter, HTTPException
@@ -616,7 +554,6 @@ from .schemas import <Resource>Spec
 from typing import Any
 from .conf import config
 from .operations import create_<resource>, delete_<resource>, assign_admin_permission
-
 
 def get_v1_<service>_router(<service>_client: Any):
     router = APIRouter(prefix=config.API_PREFIX, tags=config.API_TAGS)
@@ -631,8 +568,7 @@ def get_v1_<service>_router(<service>_client: Any):
             return JSONResponse(
                 ExceptionResponse(
                     stdout=f"Exception in <Service>. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
+                    status="Failed", status_code=external_error.status_code,
                 ).dict(),
                 status_code=external_error.status_code,
             )
@@ -642,54 +578,15 @@ def get_v1_<service>_router(<service>_client: Any):
     return router
 ```
 
-Rules:
-- Router factory name: `get_v1_<service>_router(<service>_client)`
-- `prefix` and `tags` always come from `config`
-- Create endpoint is always `POST /`
-- **Every `POST /` create endpoint must have a matching `DELETE /{identifier}` endpoint** — no create without a delete
-- Error handling: catch `HTTPException` → return `ExceptionResponse`; bare `except` → call delete for rollback
-- Return `SuccessResponse(status="successful")` on happy path
+**5. `app/global_conf.py`** — add four fields per new service inside `DevopsStaticSettings`:
+`ENABLE_<SERVICE>_API` (bool, default `True`), `<SERVICE>_API_URL`, `<SERVICE>_USERNAME`,
+`<SERVICE>_PASSWORD`. Use `auth=` (basic auth) for services like Bitbucket/Confluence/Jira/
+SonarQube/Artifactory; use `headers={"Authorization": f"Bearer {token}"}` only for genuinely
+token-based services (e.g. ArgoCD/Git connectors via the internal library).
 
----
-
-### Step 5 — Wire into `app/global_conf.py`
-
-Add three fields per new service inside `DevopsStaticSettings`:
+**6. `app/main.py`** — import the router factory, then wire it in `create_app()`:
 
 ```python
-ENABLE_<SERVICE>_API: bool = Field(
-    description="enable or disable <service> api",
-    default=True,
-)
-
-<SERVICE>_API_URL: str = Field(
-    description="<SERVICE> api url",
-    default="https://private-<service>.org",
-)
-
-<SERVICE>_PASSWORD: str = Field(
-    description="<SERVICE> username's password",
-    default="sheker",
-)
-
-<SERVICE>_USERNAME: str = Field(
-    description="<SERVICE> username",
-    default="svc-lcl-<service>-api",
-)
-```
-
-Use `auth=` (basic auth) for services like Bitbucket/Confluence/Jira/SonarQube/Artifactory.
-Use `headers={"Authorization": f"Bearer {token}"}` only for genuinely token-based services (e.g. ArgoCD/Git connectors via the internal library).
-
----
-
-### Step 6 — Wire into `app/main.py`
-
-```python
-# 1. Add import at the top
-from .v1.<service>.routes import get_v1_<service>_router
-
-# 2. Add inside create_app(), after existing routers
 if global_config.ENABLE_<SERVICE>_API:
     <service>_client = BaseAPI(
         global_config.<SERVICE>_API_URL,
@@ -710,96 +607,6 @@ if global_config.ENABLE_<SERVICE>_API:
 | `jira`        | Basic auth | `/rest/api/latest`       | project   | create (`POST /`), delete (`DELETE /{key}`), assign admin; list/sync user dirs |
 | `argocd`      | Git connector | `consumers/` (git path) | consumer config | create (`POST /`), delete (`DELETE /{name}`), get sizes, get include-resources |
 | `sonarqube`   | Basic auth | `/api`                   | group     | create (`POST /`), delete (`DELETE /{name}`), global admin + template admin    |
-
----
-
-## Confluence module — design notes
-
-**Plugin install flow:**
-1. User uploads a `.jar` to the MinIO bucket (`http://localhost:9101`)
-2. API fetches the JAR via `httpx.AsyncClient` (no credentials — bucket is public-read)
-3. API calls `GET /rest/plugins/1.0/?os_authType=basic` to get a fresh `upm-token` from Confluence
-4. API uploads the JAR via `POST /rest/plugins/1.0/?token=<upm-token>` as `multipart/form-data`
-
-**Space import flow:**
-1. User uploads a `.zip` space export to the MinIO bucket (`http://localhost:9101`)
-2. API fetches the archive from S3 and uploads it to `/rest/api/backup-restore/restore/space/upload`
-3. API polls `/rest/api/backup-restore/jobs/{id}` until `jobState == "FINISHED"` or timeout
-
-**Key env vars** (in `app/v1/confluence/conf.py`):
-- `CONFLUENCE_S3_PLUGINS_BASE_URL` — bucket URL for plugins (default: `http://localhost:9100/platform-clients/confluence-plugins`)
-- `CONFLUENCE_S3_IMPORTS_BASE_URL` — bucket URL for space archives (default: `http://localhost:9100/platform-clients/confluence-space-imports`)
-- `CONFLUENCE_UPM_ENDPOINT` — UPM base path (default: `/rest/plugins/1.0`)
-- `CONFLUENCE_JOB_POLL_INTERVAL` / `CONFLUENCE_JOB_MAX_POLLS` — restore job polling config
-
-**Confluence prerequisite — allow plugin uploads:**
-Admin → Add-ons / Manage apps → Settings → uncheck "Prevent users from installing add-ons"
-
-**UPM plugin key convention:**
-DELETE takes the OSGi key (e.g. `com.example.my-plugin`). UPM appends `-key` internally. The route uses `{plugin_key:path}` to handle dotted keys correctly.
-
----
-
-## Confluence 9.3.1 REST API — known working endpoints
-
-The standard `POST /rest/api/latest/space/{key}/permission` (singular) **returns 404 and does not work** in Confluence 9.3.1. Use the endpoints below instead.
-
-### Space permission grant (user)
-
-```
-# Step 1 — resolve username to userKey
-GET /rest/api/latest/user?username={username}
-→ response body contains "userKey"
-
-# Step 2 — grant read first (required by Confluence before any other permission)
-PUT /rest/api/latest/space/{spaceKey}/permissions/user/{userKey}/grant
-Body: [{"operationKey": "read", "targetType": "space"}]
-→ 204
-
-# Step 3 — grant administer
-PUT /rest/api/latest/space/{spaceKey}/permissions/user/{userKey}/grant
-Body: [{"operationKey": "administer", "targetType": "space"}]
-→ 204
-```
-
-### Space permission grant (group)
-
-Same body format; same read-before-administer requirement:
-
-```
-PUT /rest/api/latest/space/{spaceKey}/permissions/group/{groupName}/grant
-Body: [{"operationKey": "read", "targetType": "space"}]
-→ 204
-
-PUT /rest/api/latest/space/{spaceKey}/permissions/group/{groupName}/grant
-Body: [{"operationKey": "administer", "targetType": "space"}]
-→ 204
-```
-
-### Read all space permissions
-
-```
-GET /rest/api/latest/space/{spaceKey}/permissions
-→ 200, array of {operation: {operationKey, targetType}, subject: {type, userKey|name}, spaceKey}
-```
-
-### Create a user (admin API)
-
-```
-POST /rest/api/latest/admin/user
-Body: {"userName": "...", "password": "...", "email": "...", "fullName": "..."}
-→ 200, body contains "userKey"
-```
-Note: fields are `userName` (not `username`) and `fullName` (not `displayName`).
-
-### Create a group (admin API)
-
-```
-POST /rest/api/latest/admin/group
-Body: {"type": "group", "name": "..."}
-→ 201
-```
-Note: the `"type": "group"` field is required — omitting it causes a 400.
 
 ---
 
@@ -841,6 +648,9 @@ if payload.admin_user:
 else:
     await assign_space_group_admin(client, payload)
 ```
+
+(Jira departs from this pattern — `admin_user` is required there, not part of an
+either/or validator. See `app/v1/jira/CLAUDE.md`.)
 
 ## Response schemas (`app/v1/response_schemas.py`)
 

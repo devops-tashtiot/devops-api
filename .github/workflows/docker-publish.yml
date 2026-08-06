@@ -1,109 +1,135 @@
-name: Build & Publish Docker Image
-
-on:
-  push:
-
-permissions:
-  contents: write
-  packages: write
-
-jobs:
-  release:
-    if: "!contains(github.event.head_commit.message, 'chore(release):')"
-    runs-on: ubuntu-latest
-    env:
-      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/devops-api
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # master gets a real semver release (git-cliff bump + tag + changelog); every other
-      # branch (e.g. check-api, used for verifying fixes against the live cluster before they
-      # reach master) gets a unique per-push tag instead. Reusing git-cliff's semver bump on a
-      # branch that shares tag history with master causes silent tag collisions — a branch
-      # build can compute the same "next version" master already used, which then overwrites
-      # that tag's image content in GHCR while the git tag / devtools-definition value stays
-      # unchanged, so nothing observable tells you the running pod is now ambiguous. A SHA-based
-      # tag can never collide with anything, on any branch, ever.
-      - name: Bump version & generate changelog (git-cliff)
-        if: github.ref_name == 'master'
-        uses: orhun/git-cliff-action@v4
-        id: git-cliff
-        with:
-          config: cliff.toml
-          args: --verbose --bump
-        env:
-          OUTPUT: CHANGELOG.md
-          GITHUB_REPO: ${{ github.repository }}
-
-      - name: Install git-cliff CLI
-        if: github.ref_name == 'master'
-        uses: taiki-e/install-action@git-cliff
-
-      - name: Determine release version
-        id: version
-        run: |
-          IMAGE="${{ env.IMAGE_NAME }}"
-          if [ "${{ github.ref_name }}" = "master" ]; then
-            VALUE="$(git-cliff --config cliff.toml --bumped-version)"
-            TAGS="$(printf '%s:%s\n%s:latest' "${IMAGE}" "${VALUE}" "${IMAGE}")"
-          else
-            VALUE="${{ github.ref_name }}-$(git rev-parse --short HEAD)"
-            TAGS="$(printf '%s:%s' "${IMAGE}" "${VALUE}")"
-          fi
-          echo "value=${VALUE}" >> "$GITHUB_OUTPUT"
-          {
-            echo "tags<<TAGS_EOF"
-            echo "${TAGS}"
-            echo "TAGS_EOF"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Commit changelog and tag release
-        if: github.ref_name == 'master'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add CHANGELOG.md
-          git commit -m "chore(release): ${{ steps.version.outputs.value }} [skip ci]" || echo "no changelog changes"
-          git push origin HEAD:${{ github.ref_name }}
-          if git rev-parse "${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
-            echo "Tag ${{ steps.version.outputs.value }} already exists, skipping"
-          else
-            git tag "${{ steps.version.outputs.value }}"
-            git push origin "${{ steps.version.outputs.value }}"
-          fi
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # :latest always tracks master only — a check-api build must never become the image
-      # anything defaulting to :latest would pull.
-      - name: Build and push image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.version.outputs.tags }}
-
-      - name: Bump image tag in devtools-definition
-        env:
-          GITOPS_TOKEN: ${{ secrets.GITOPS_PAT }}
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          git clone "https://x-access-token:${GITOPS_TOKEN}@github.com/devops-tashtiot/devtools-definition.git" /tmp/devtools-definition
-          cd /tmp/devtools-definition
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          sed -i "s/^\(\s*tag: \).*/\1\"${VERSION}\"/" devtools/devops-api/values.yaml
-          git add devtools/devops-api/values.yaml
-          git commit -m "chore(devops-api): bump image tag to ${VERSION}" || echo "no changes"
-          git push origin HEAD:main
+# Disabled — Bitbucket is the source of truth for this repo now, and GitHub is a
+# read-only mirror kept in sync by .woodpecker/mirror-to-github.yml (Bitbucket -> GitHub
+# only; nothing pushes GitHub -> Bitbucket). This workflow used to be the active
+# build/release/deploy pipeline (see devops-api/CLAUDE.md's "CI" section, still describing
+# what it did before being disabled), but it doesn't belong running against a read-only
+# mirror anymore — the version-bump/tag/build/deploy logic it did would need to move to a
+# Woodpecker pipeline triggered by Bitbucket pushes instead (matching the pattern
+# a-woodpecker-plugins already uses) if this automation is still wanted. Kept here,
+# entirely commented out, for reference rather than deleted outright.
+#
+# name: Build & Publish Docker Image
+#
+# on:
+#   push:
+#
+# permissions:
+#   contents: write
+#   packages: write
+#
+# jobs:
+#   release:
+#     if: "!contains(github.event.head_commit.message, 'chore(release):')"
+#     runs-on: ubuntu-latest
+#     env:
+#       IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/devops-api
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#         with:
+#           fetch-depth: 0
+#           # Default GITHUB_TOKEN credential isn't used for this repo's own push (see
+#           # "Commit changelog and tag release" below) — GitHub's branch protection on
+#           # `master` restricts pushes to specific identities, and the auto-generated
+#           # GITHUB_TOKEN's identity (github-actions[bot]) isn't one of them. Not persisting
+#           # it here avoids any ambiguity with the explicit RELEASE_PAT-authenticated remote
+#           # set up in that step.
+#           persist-credentials: false
+#
+#       # master gets a real semver release (git-cliff bump + tag + changelog); every other
+#       # branch (e.g. check-api, used for verifying fixes against the live cluster before they
+#       # reach master) gets a unique per-push tag instead. Reusing git-cliff's semver bump on a
+#       # branch that shares tag history with master causes silent tag collisions — a branch
+#       # build can compute the same "next version" master already used, which then overwrites
+#       # that tag's image content in GHCR while the git tag / devtools-definition value stays
+#       # unchanged, so nothing observable tells you the running pod is now ambiguous. A SHA-based
+#       # tag can never collide with anything, on any branch, ever.
+#       - name: Bump version & generate changelog (git-cliff)
+#         if: github.ref_name == 'master'
+#         uses: orhun/git-cliff-action@v4
+#         id: git-cliff
+#         with:
+#           config: cliff.toml
+#           args: --verbose --bump
+#         env:
+#           OUTPUT: CHANGELOG.md
+#           GITHUB_REPO: ${{ github.repository }}
+#
+#       - name: Install git-cliff CLI
+#         if: github.ref_name == 'master'
+#         uses: taiki-e/install-action@git-cliff
+#
+#       - name: Determine release version
+#         id: version
+#         run: |
+#           IMAGE="${{ env.IMAGE_NAME }}"
+#           if [ "${{ github.ref_name }}" = "master" ]; then
+#             VALUE="$(git-cliff --config cliff.toml --bumped-version)"
+#             TAGS="$(printf '%s:%s\n%s:latest' "${IMAGE}" "${VALUE}" "${IMAGE}")"
+#           else
+#             VALUE="${{ github.ref_name }}-$(git rev-parse --short HEAD)"
+#             TAGS="$(printf '%s:%s' "${IMAGE}" "${VALUE}")"
+#           fi
+#           echo "value=${VALUE}" >> "$GITHUB_OUTPUT"
+#           {
+#             echo "tags<<TAGS_EOF"
+#             echo "${TAGS}"
+#             echo "TAGS_EOF"
+#           } >> "$GITHUB_OUTPUT"
+#
+#       - name: Commit changelog and tag release
+#         if: github.ref_name == 'master'
+#         env:
+#           RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+#         run: |
+#           git config user.name "github-actions[bot]"
+#           git config user.email "github-actions[bot]@users.noreply.github.com"
+#           # Push authenticated as RELEASE_PAT's owner (an org-level secret, shared across
+#           # repos that need this same pattern), not the default GITHUB_TOKEN — GitHub's
+#           # branch protection on `master` restricts direct pushes to specific identities,
+#           # and github-actions[bot] (GITHUB_TOKEN's identity) isn't on that list. The commit
+#           # author above stays github-actions[bot]; only the push transport's credential
+#           # changes.
+#           git remote set-url origin "https://x-access-token:${RELEASE_PAT}@github.com/devops-tashtiot/devops-api.git"
+#           git add CHANGELOG.md
+#           git commit -m "chore(release): ${{ steps.version.outputs.value }} [skip ci]" || echo "no changelog changes"
+#           git push origin HEAD:${{ github.ref_name }}
+#           if git rev-parse "${{ steps.version.outputs.value }}" >/dev/null 2>&1; then
+#             echo "Tag ${{ steps.version.outputs.value }} already exists, skipping"
+#           else
+#             git tag "${{ steps.version.outputs.value }}"
+#             git push origin "${{ steps.version.outputs.value }}"
+#           fi
+#
+#       - name: Set up Docker Buildx
+#         uses: docker/setup-buildx-action@v3
+#
+#       - name: Log in to GHCR
+#         uses: docker/login-action@v3
+#         with:
+#           registry: ghcr.io
+#           username: ${{ github.actor }}
+#           password: ${{ secrets.GITHUB_TOKEN }}
+#
+#       # :latest always tracks master only — a check-api build must never become the image
+#       # anything defaulting to :latest would pull.
+#       - name: Build and push image
+#         uses: docker/build-push-action@v6
+#         with:
+#           context: .
+#           push: true
+#           tags: ${{ steps.version.outputs.tags }}
+#
+#       - name: Bump image tag in devtools-definition
+#         env:
+#           GITOPS_TOKEN: ${{ secrets.GITOPS_PAT }}
+#           VERSION: ${{ steps.version.outputs.value }}
+#         run: |
+#           git clone "https://x-access-token:${GITOPS_TOKEN}@github.com/devops-tashtiot/devtools-definition.git" /tmp/devtools-definition
+#           cd /tmp/devtools-definition
+#           git config user.name "github-actions[bot]"
+#           git config user.email "github-actions[bot]@users.noreply.github.com"
+#           sed -i "s/^\(\s*tag: \).*/\1\"${VERSION}\"/" devtools/devops-api/values.yaml
+#           git add devtools/devops-api/values.yaml
+#           git commit -m "chore(devops-api): bump image tag to ${VERSION}" || echo "no changes"
+#           git push origin HEAD:main

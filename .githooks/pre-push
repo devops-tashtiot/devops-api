@@ -1,0 +1,20 @@
+#!/bin/sh
+# Bitbucket is the source of truth for this repo — GitHub is a read-only
+# mirror kept in sync by .woodpecker/mirror-to-github.yml. This is a local
+# convenience guard only (bypassable with `git push --no-verify` or by never
+# running `git config core.hooksPath .githooks` in the first place); the
+# real enforcement is GitHub branch protection restricting writes to the
+# mirror pipeline's own push identity — see devops/CLAUDE.md's "Bitbucket
+# push access" section.
+remote_url="$2"
+
+case "$remote_url" in
+  *github.com*)
+    echo "error: refusing to push to GitHub ($remote_url)." >&2
+    echo "Bitbucket is the source of truth — push to bitbucket.devopstashtiot.page instead." >&2
+    echo "See devops/CLAUDE.md's 'Bitbucket push access' section for how to authenticate." >&2
+    exit 1
+    ;;
+esac
+
+exit 0
