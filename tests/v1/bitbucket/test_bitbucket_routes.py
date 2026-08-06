@@ -163,6 +163,8 @@ def test_create_project_error_returns_error_response(mock_bitbucket_client):
 
 
 def test_create_project_unexpected_error_triggers_rollback(mock_bitbucket_client):
+    # create_project calls POST; if POST itself raises, the project was never created
+    # (created=False) so no rollback should happen — nothing to clean up.
     ok = MagicMock(status_code=200, text="")
     mock_bitbucket_client.post = AsyncMock(side_effect=Exception("network error"))
     mock_bitbucket_client.delete = AsyncMock(return_value=ok)
@@ -173,9 +175,8 @@ def test_create_project_unexpected_error_triggers_rollback(mock_bitbucket_client
 
     response = c.post(f"{PREFIX}/", json=VALID_PAYLOAD)
 
-    delete_endpoints = [call.args[0] for call in mock_bitbucket_client.delete.call_args_list]
-    assert any("TEST" in ep for ep in delete_endpoints)
-    # the bare except used to fall through with no return at all — must be a clean error response
+    # creation failed before the project was created — delete must NOT be called
+    mock_bitbucket_client.delete.assert_not_called()
     assert response.status_code == 500
     assert response.json()["status"] == "Failed"
 
@@ -325,3 +326,41 @@ def test_sync_user_dir_returns_501_not_supported(client, mock_bitbucket_client):
     assert response.json()["status"] == "Failed"
     mock_bitbucket_client.get.assert_not_called()
     mock_bitbucket_client.post.assert_not_called()
+
+
+def test_create_project_httpexception_during_permission_triggers_rollback(mock_bitbucket_client):
+    # validate_admin_principals uses GET — return a user-exists response.
+    # delete_project internally calls list_repos (GET /projects/{key}/repos) before deleting;
+    # that response must include 'isLastPage' and repos with a 'slug' field, or an empty list.
+    def _get_side_effect(url, **kwargs):
+        if "/repos" in url:
+            # list_repos — return an empty repo list so rollback can proceed cleanly
+            return MagicMock(
+                status_code=200, text="",
+                json=MagicMock(return_value={"values": [], "isLastPage": True})
+            )
+        # validate_admin_principals — user/group exists
+        return MagicMock(
+            status_code=200, text="",
+            json=MagicMock(return_value={"values": [{"name": "nati"}]})
+        )
+
+    mock_bitbucket_client.get = AsyncMock(side_effect=_get_side_effect)
+    mock_bitbucket_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+    # permission PUT fails with 400 — triggers rollback of the already-created project
+    mock_bitbucket_client.put = AsyncMock(
+        return_value=MagicMock(status_code=400, text='{"errors":[{"message":"Bad request"}]}')
+    )
+    mock_bitbucket_client.delete = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+
+    app = FastAPI()
+    app.include_router(get_v1_bitbucket_router(mock_bitbucket_client))
+    c = TestClient(app)
+
+    response = c.post(f"{PREFIX}/", json=VALID_PAYLOAD)
+    assert response.status_code == 400
+    assert response.json()["status"] == "Failed"
+    # project was created (created=True) before PUT failed, so delete must have been called
+    delete_endpoints = [call.args[0] for call in mock_bitbucket_client.delete.call_args_list]
+    assert any("TEST" in ep for ep in delete_endpoints)
+
