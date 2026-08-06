@@ -27,6 +27,14 @@ steps:
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
+      # TEMPORARY DEBUG — remove once bitbucket_token's empty-substitution issue
+      # is diagnosed. Prints lengths only (never the values) so secrets don't
+      # leak into pipeline logs, then sleeps so the container can be `kubectl
+      # exec`'d into for live investigation.
+      - echo "BITBUCKET_TOKEN length: ${#BITBUCKET_TOKEN}"
+      - echo "GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
+      - env | grep -Ei 'CI_|DRONE_|PLUGIN_' | sed -E 's/=.*/=<redacted>/' | sort
+      - sleep 3600
       # Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any
       # public trust store — same reason plugins/master-versions/Dockerfile
       # and a-woodpecker-plugins/.woodpecker/publish.yml's clone step both
