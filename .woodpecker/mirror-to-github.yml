@@ -14,8 +14,8 @@ steps:
   - name: Mirror to GitHub
     image: alpine/git
     environment:
-      BITBUCKET_ADMIN_PASSWORD:
-        from_secret: bitbucket_admin_password
+      BITBUCKET_TOKEN:
+        from_secret: bitbucket_token
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
@@ -26,6 +26,11 @@ steps:
       - apk add --no-cache curl ca-certificates
       - curl -sf https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem -o /usr/local/share/ca-certificates/cf-origin-ca.crt
       - update-ca-certificates
-      - git clone --mirror "https://admin:${BITBUCKET_ADMIN_PASSWORD}@bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
+      # Cloning only needs read access, so the existing bitbucket_token secret
+      # (already used by a-woodpecker-plugins/.woodpecker/publish.yml to read
+      # PR descriptions) is enough — no need for a separate admin-password
+      # secret. Bitbucket Server/DC HTTP access tokens authenticate as
+      # x-token-auth:<token>, not username:password.
+      - git clone --mirror "https://x-token-auth:${BITBUCKET_TOKEN}@bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
       - cd repo-mirror
       - git push --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
