@@ -7,6 +7,14 @@
 # `git push --mirror`. GitHub is branch-protected to be read-only except for
 # this pipeline's push identity — never push to it directly, and the next
 # sync would overwrite it even if you did.
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      depth: 0
+      tags: false
+      custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
+
 when:
   - event: push
 
