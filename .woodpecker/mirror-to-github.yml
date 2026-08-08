@@ -48,4 +48,10 @@ steps:
       # in the header as a map key.
       - 'git -c http.extraheader="Authorization: Bearer $${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror'
       - cd repo-mirror
-      - git push --mirror "https://x-access-token:$${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
+      # Push branches and tags only (with --prune so deletions propagate), NOT
+      # `git push --mirror`. Bitbucket's ref store still carries GitHub-style
+      # refs/pull/*/head refs (left over from the old bidirectional sync), and
+      # GitHub rejects any write to those hidden refs ("deny updating a hidden
+      # ref"). Restricting the push to refs/heads/* + refs/tags/* mirrors every
+      # branch and tag while leaving GitHub's PR refs alone.
+      - 'git push --prune "https://x-access-token:$${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*"'
