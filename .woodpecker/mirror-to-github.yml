@@ -22,6 +22,8 @@ steps:
   - name: Mirror to GitHub
     image: alpine/git
     environment:
+      BITBUCKET_TOKEN:
+        from_secret: bitbucket_token
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
@@ -32,15 +34,12 @@ steps:
       - apk add --no-cache curl ca-certificates
       - curl -sf https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem -o /usr/local/share/ca-certificates/cf-origin-ca.crt
       - update-ca-certificates
-      # Authenticate to Bitbucket with the SAME forge credentials Woodpecker
-      # itself used to clone this repo — exposed as the built-in CI_NETRC_*
-      # env vars, which (unlike a user-managed secret) aren't subject to the
-      # per-secret repo/event/plugins-only/image scoping that left
-      # bitbucket_token empty in this plain-shell step. Written to ~/.netrc so
-      # the token never appears in the clone URL / process args.
-      - printf 'machine %s\nlogin %s\npassword %s\n' "$CI_NETRC_MACHINE" "$CI_NETRC_USERNAME" "$CI_NETRC_PASSWORD" > ~/.netrc
-      - chmod 600 ~/.netrc
-      - git clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
-      - rm -f ~/.netrc
+      # This Bitbucket DC instance accepts its HTTP access tokens ONLY as an
+      # `Authorization: Bearer <token>` header — NOT as `x-token-auth:<token>`
+      # basic-auth in the URL (that returns 401). Sent via a per-command
+      # `-c http.extraheader` so the header is scoped to just this clone and is
+      # never carried onto the separate `git push` to GitHub below. Woodpecker
+      # masks the secret value in the logs, so it will render as `Bearer ***`.
+      - git -c http.extraheader="Authorization: Bearer ${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
       - cd repo-mirror
       - git push --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
