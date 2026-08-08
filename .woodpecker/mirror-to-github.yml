@@ -40,6 +40,7 @@ steps:
       # `-c http.extraheader` so the header is scoped to just this clone and is
       # never carried onto the separate `git push` to GitHub below. Woodpecker
       # masks the secret value in the logs, so it will render as `Bearer ***`.
-      - git -c http.extraheader="Authorization: Bearer ${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
+      # Single-quoted so YAML doesn't parse the `: ` in the header as a map.
+      - 'git -c http.extraheader="Authorization: Bearer ${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror'
       - cd repo-mirror
       - git push --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
