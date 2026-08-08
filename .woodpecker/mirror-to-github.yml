@@ -31,17 +31,20 @@ steps:
       # trust store — disable verification for these in-cluster git calls, the
       # same way publish.yml's working "Push changelogs to Git" step does.
       - git config --global http.sslVerify false
-      # CRITICAL: reference the secrets as bare `$VAR`, never `${VAR}`.
-      # Woodpecker runs its OWN `${...}` substitution over commands before the
-      # shell does, and replaces `${SECRET}` with an empty string (secrets are
-      # not Woodpecker substitution variables) — that is what emptied the token
-      # and caused every earlier 401 / "could not read Username" failure. Bare
-      # `$VAR` is passed through untouched for the shell to expand. (Same reason
-      # pr.yml/publish.yml escape their shell vars as `$${var}`.)
+      # CRITICAL: escape the secret env-var references as `$${VAR}`, never
+      # `${VAR}` and never bare `$VAR`. Woodpecker runs its own `${...}`
+      # substitution (drone/envsubst) over every command before the shell does:
+      # `${SECRET}` gets emptied (secrets aren't Woodpecker substitution vars)
+      # and bare `$SECRET` trips an "unable to parse variable name" pipeline
+      # parse error. `$${VAR}` → Woodpecker emits a literal `${VAR}` → the shell
+      # expands the real env var. This is the documented Woodpecker escape and
+      # the same one pr.yml/publish.yml use for their shell vars — and it was
+      # the true cause of every earlier empty-token / 401 failure.
       #
       # This Bitbucket DC instance accepts its HTTP access token ONLY as an
       # `Authorization: Bearer <token>` header — NOT as `x-token-auth:<token>`
-      # basic-auth in the URL (that returns 401).
-      - git -c http.extraheader="Authorization: Bearer $BITBUCKET_TOKEN" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
+      # basic-auth in the URL (that returns 401). Single-quoted so YAML doesn't
+      # read the `: ` in the header as a map key.
+      - 'git -c http.extraheader="Authorization: Bearer $${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror'
       - cd repo-mirror
-      - git push --mirror "https://x-access-token:$GITHUB_TOKEN@github.com/devops-tashtiot/devops-api.git"
+      - git push --mirror "https://x-access-token:$${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
