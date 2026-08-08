@@ -31,20 +31,21 @@ steps:
       # trust store — disable verification for these in-cluster git calls, the
       # same way publish.yml's working "Push changelogs to Git" step does.
       - git config --global http.sslVerify false
-      # CRITICAL: escape the secret env-var references as `$${VAR}`, never
-      # `${VAR}` and never bare `$VAR`. Woodpecker runs its own `${...}`
-      # substitution (drone/envsubst) over every command before the shell does:
-      # `${SECRET}` gets emptied (secrets aren't Woodpecker substitution vars)
-      # and bare `$SECRET` trips an "unable to parse variable name" pipeline
-      # parse error. `$${VAR}` → Woodpecker emits a literal `${VAR}` → the shell
-      # expands the real env var. This is the documented Woodpecker escape and
-      # the same one pr.yml/publish.yml use for their shell vars — and it was
-      # the true cause of every earlier empty-token / 401 failure.
+      # CRITICAL: the secret env vars below are written as doubled-dollar-brace
+      # (dollar dollar brace VAR brace). Woodpecker runs drone/envsubst over the
+      # ENTIRE raw pipeline file (comments included!) before parsing it, so a
+      # single-dollar-brace reference gets emptied, and the doubled dollar makes
+      # Woodpecker emit one literal dollar-brace reference for the shell to
+      # expand at runtime. This is the documented Woodpecker escape, the same
+      # one pr.yml/publish.yml use for their shell vars. NOTE: for that same
+      # reason this comment must not contain a raw dollar-brace-dot-dot-dot
+      # placeholder — drone/envsubst fails the whole file with "unable to parse
+      # variable name" if it sees one, even inside a comment.
       #
       # This Bitbucket DC instance accepts its HTTP access token ONLY as an
-      # `Authorization: Bearer <token>` header — NOT as `x-token-auth:<token>`
-      # basic-auth in the URL (that returns 401). Single-quoted so YAML doesn't
-      # read the `: ` in the header as a map key.
+      # `Authorization: Bearer <token>` header — NOT as x-token-auth in the URL
+      # (that returns 401). Single-quoted so YAML doesn't read the colon-space
+      # in the header as a map key.
       - 'git -c http.extraheader="Authorization: Bearer $${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror'
       - cd repo-mirror
       - git push --mirror "https://x-access-token:$${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
