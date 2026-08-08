@@ -1,3 +1,12 @@
+# Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any public trust
+# store — the default checkout fails with "unable to get local issuer
+# certificate" without this. Same override the mirror pipeline uses.
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
+
 when:
   - event: [push, manual, tag]
     branch: master

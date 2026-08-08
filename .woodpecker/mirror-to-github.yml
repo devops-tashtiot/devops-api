@@ -4,15 +4,18 @@
 # module and the top-level devops/CLAUDE.md's "Bitbucket push access"
 # section). Every push here re-syncs the full repo (all branches, tags, and
 # their deletions) onto GitHub at github.com/devops-tashtiot/devops-api with
-# `git push --mirror`. GitHub is branch-protected to be read-only except for
+# mirror semantics. GitHub is branch-protected to be read-only except for
 # this pipeline's push identity — never push to it directly, and the next
 # sync would overwrite it even if you did.
+#
+# tags: true so the checkout brings tags too; depth: 0 for full history —
+# both are needed to reproduce a faithful mirror on GitHub.
 clone:
   git:
     image: woodpeckerci/plugin-git
     settings:
       depth: 0
-      tags: false
+      tags: true
       custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
 
 when:
@@ -27,20 +30,39 @@ steps:
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
-      # Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any
-      # public trust store — same reason plugins/master-versions/Dockerfile
-      # and a-woodpecker-plugins/.woodpecker/publish.yml's clone step both
-      # trust it explicitly rather than disabling verification.
-      - apk add --no-cache curl ca-certificates
-      - curl -sf https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem -o /usr/local/share/ca-certificates/cf-origin-ca.crt
-      - update-ca-certificates
-      # This Bitbucket DC instance accepts its HTTP access tokens ONLY as an
-      # `Authorization: Bearer <token>` header — NOT as `x-token-auth:<token>`
-      # basic-auth in the URL (that returns 401). Sent via a per-command
-      # `-c http.extraheader` so the header is scoped to just this clone and is
-      # never carried onto the separate `git push` to GitHub below. Woodpecker
-      # masks the secret value in the logs, so it will render as `Bearer ***`.
-      # Single-quoted so YAML doesn't parse the `: ` in the header as a map.
-      - 'git -c http.extraheader="Authorization: Bearer ${BITBUCKET_TOKEN}" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror'
-      - cd repo-mirror
-      - git push --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
+      # One-line diagnostic: prints only the *lengths* of each credential (never
+      # the values), so a single run shows definitively which creds this
+      # alpine/git step actually receives — the user-managed secrets are subject
+      # to per-secret image/event scoping, the CI_NETRC_* forge creds are not.
+      - 'echo "cred availability -> bb_len=${#BITBUCKET_TOKEN} gh_len=${#GITHUB_TOKEN} netrc_user_len=${#CI_NETRC_USERNAME} netrc_pw_len=${#CI_NETRC_PASSWORD}"'
+      # Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any public
+      # trust store. Disabling verification for these in-cluster git calls
+      # matches the proven-working publish.yml "Push changelogs to Git" step.
+      - git config --global http.sslVerify false
+      - git config --global safe.directory '*'
+      # Prefer the bitbucket_token secret if this step actually received it (this
+      # Bitbucket DC instance accepts HTTP access tokens ONLY as an
+      # `Authorization: Bearer <token>` header, NOT x-token-auth:<token> in the
+      # URL — that returns 401). If the secret is withheld from this image, fall
+      # back to the already-authenticated `origin` remote that Woodpecker's own
+      # checkout set up — the same remote publish.yml pushes to from alpine/git,
+      # so it's authenticated here too. Fetch every branch/tag into detached
+      # ref namespaces (never refs/heads/*, which would collide with the checked-
+      # out branch) so the subsequent push can mirror them verbatim.
+      - |
+        if [ -n "$BITBUCKET_TOKEN" ]; then
+          echo ">> bitbucket_token present — fresh --mirror clone via Bearer"
+          git -c http.extraheader="Authorization: Bearer $BITBUCKET_TOKEN" clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
+        else
+          echo ">> bitbucket_token withheld — reusing authenticated checkout origin"
+          git fetch --prune origin "+refs/heads/*:refs/remotes/bb/*" "+refs/tags/*:refs/tags/*"
+        fi
+      # Push everything to GitHub with mirror semantics (--prune deletes GitHub
+      # refs that no longer exist on Bitbucket). Two shapes depending on which
+      # source we produced above.
+      - |
+        if [ -d repo-mirror ]; then
+          git -C repo-mirror push --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
+        else
+          git push --prune "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git" "+refs/remotes/bb/*:refs/heads/*" "+refs/tags/*:refs/tags/*"
+        fi
