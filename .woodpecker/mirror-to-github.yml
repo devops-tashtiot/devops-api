@@ -22,19 +22,9 @@ steps:
   - name: Mirror to GitHub
     image: alpine/git
     environment:
-      BITBUCKET_TOKEN:
-        from_secret: bitbucket_token
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
-      # TEMPORARY DEBUG — remove once bitbucket_token's empty-substitution issue
-      # is diagnosed. Prints lengths only (never the values) so secrets don't
-      # leak into pipeline logs, then sleeps so the container can be `kubectl
-      # exec`'d into for live investigation.
-      - echo "BITBUCKET_TOKEN length: ${#BITBUCKET_TOKEN}"
-      - echo "GITHUB_TOKEN length: ${#GITHUB_TOKEN}"
-      - env | grep -Ei 'CI_|DRONE_|PLUGIN_' | sed -E 's/=.*/=<redacted>/' | sort
-      - sleep 3600
       # Bitbucket's TLS cert is a Cloudflare Origin CA cert, not in any
       # public trust store — same reason plugins/master-versions/Dockerfile
       # and a-woodpecker-plugins/.woodpecker/publish.yml's clone step both
@@ -42,11 +32,15 @@ steps:
       - apk add --no-cache curl ca-certificates
       - curl -sf https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem -o /usr/local/share/ca-certificates/cf-origin-ca.crt
       - update-ca-certificates
-      # Cloning only needs read access, so the existing bitbucket_token secret
-      # (already used by a-woodpecker-plugins/.woodpecker/publish.yml to read
-      # PR descriptions) is enough — no need for a separate admin-password
-      # secret. Bitbucket Server/DC HTTP access tokens authenticate as
-      # x-token-auth:<token>, not username:password.
-      - git clone --mirror "https://x-token-auth:${BITBUCKET_TOKEN}@bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
+      # Authenticate to Bitbucket with the SAME forge credentials Woodpecker
+      # itself used to clone this repo — exposed as the built-in CI_NETRC_*
+      # env vars, which (unlike a user-managed secret) aren't subject to the
+      # per-secret repo/event/plugins-only/image scoping that left
+      # bitbucket_token empty in this plain-shell step. Written to ~/.netrc so
+      # the token never appears in the clone URL / process args.
+      - printf 'machine %s\nlogin %s\npassword %s\n' "$CI_NETRC_MACHINE" "$CI_NETRC_USERNAME" "$CI_NETRC_PASSWORD" > ~/.netrc
+      - chmod 600 ~/.netrc
+      - git clone --mirror "https://bitbucket.devopstashtiot.page/scm/devopstashtiot/devops-api.git" repo-mirror
+      - rm -f ~/.netrc
       - cd repo-mirror
       - git push --mirror "https://x-access-token:${GITHUB_TOKEN}@github.com/devops-tashtiot/devops-api.git"
