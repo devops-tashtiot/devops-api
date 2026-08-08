@@ -3,9 +3,8 @@
 # certificate" without this. Same override the mirror pipeline uses.
 clone:
   git:
-    image: woodpeckerci/plugin-git
+    image: harbor.devopstashtiot.page/plugins/plugin-git-cert:prod
     settings:
-      custom_ssl_url: https://developers.cloudflare.com/ssl/static/origin_ca_rsa_root.pem
 
 when:
   - event: [push, manual, tag]
@@ -54,9 +53,9 @@ steps:
 
 # ========================================== BUILD & PUSH ==============================================================
 - name: Build image and push
-  image: artifactory.app.com/woodpecker/plugins/kaniko:latest
+  image: harbor.devopstashtiot.page/woodpecker/plugins/kaniko:latest
   settings:
-    registry: artifactory.app.com
+    registry: harbor.devopstashtiot.page
     username: svc_dev_admin
     password:
       from_secret: artifactory_token
