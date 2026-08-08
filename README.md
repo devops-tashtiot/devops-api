@@ -1,5 +1,13 @@
 # devops-api
 
+> ## 🪞 This is a read-only mirror
+> The **source of truth is Bitbucket**:
+> `bitbucket.devopstashtiot.page/projects/DEVOPSTASHTIOT/repos/devops-api`.
+> Clone and push **there** — pushes to this GitHub repo are rejected by branch
+> protection and would be overwritten on the next sync anyway. GitHub is kept in
+> sync one-way by a Woodpecker pipeline (`.woodpecker/mirror-to-github.yml`) that
+> runs on every Bitbucket push.
+
 ## Project Structure
 ```
 Here is the project structure with a brief explanation for each row:
