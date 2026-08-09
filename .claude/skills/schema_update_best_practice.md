@@ -7,6 +7,7 @@ When updating Pydantic schemas for external APIs (e.g., Bitbucket, ArgoCD, Vault
 
 1. **Research Target System Constraints**:
    - Before updating any schema, search for the official documentation of the target service (e.g., ArgoCD object naming rules, Vault secret path constraints) to determine exact limits on length, characters, and formatting.
+   - **Version Specificity**: Ensure that you are checking the best practices and constraints for the *specific version* of the tool that is currently deployed. Limits (like maximum lengths or allowed characters) can change between versions.
 
 2. **Resource Identifiers (Keys/IDs)**:
    - **Pattern**: Identifiers used in URLs, IDs, or downstream integrations usually have strict formatting. Define explicit regex patterns (`pattern`) matching the tool's exact rules (e.g., must start with a letter, alphanumeric only, specific separators).
