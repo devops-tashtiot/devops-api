@@ -8,7 +8,7 @@ class ProjectSpec(BaseModel):
     key: str = Field(
         ...,
         description="project key",
-        min_length=1,
+        min_length=2,
         max_length=10,
         pattern=r"^[A-Z][A-Z0-9_]*$"
     )
