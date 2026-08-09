@@ -115,7 +115,7 @@ class ClusterSecretSpec(BaseModel):
         ...,
         description="Prefix for the ArgoCD app name — final name will be {chosen_name}-cluster-secret",
         min_length=1,
-        max_length=63,
+        max_length=48,
         pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
     )
     app_name: str = Field(
