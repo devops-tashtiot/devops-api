@@ -15,7 +15,7 @@ class ProjectPermissionSpec(BaseModel):
         description="Artifactory project key",
         min_length=2,
         max_length=32,
-        pattern=r"^[a-z0-9\-]+$",
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
     member_name: str = Field(
         ...,
@@ -68,8 +68,8 @@ class ProjectSpec(BaseModel):
         default=None,
         description="Username to receive PROJECT_ADMIN role",
         min_length=1,
-        max_length=50,
-        pattern=r"^[a-z0-9_\-]+$",
+        max_length=14,
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
     admin_group: Optional[str] = Field(
@@ -77,7 +77,6 @@ class ProjectSpec(BaseModel):
         description="Group name to receive PROJECT_ADMIN role",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
 
     @model_validator(mode="after")

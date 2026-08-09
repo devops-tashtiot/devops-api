@@ -17,8 +17,8 @@ class SonarQubeConsumerSpec(BaseModel):
         ...,
         description="Consumer name — used as the directory name under consumers/",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
     )
     plugins_list: Optional[list[str]] = Field(
         default=None,
@@ -73,8 +73,8 @@ class GroupSpec(BaseModel):
         ...,
         description="Consumer name — SonarQube URL is built as https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
     )
 
     name: str = Field(
@@ -82,7 +82,6 @@ class GroupSpec(BaseModel):
         description="Group name — will be created in SonarQube and granted global admin rights",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
 
 

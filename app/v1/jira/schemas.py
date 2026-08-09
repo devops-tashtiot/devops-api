@@ -35,8 +35,8 @@ class ProjectSpec(BaseModel):
         ...,
         description="Username to set as project lead and administrator",
         min_length=1,
-        max_length=50,
-        pattern=r"^[a-z0-9_\-]+$",
+        max_length=14,
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
     admin_group: Optional[str] = Field(
@@ -44,7 +44,6 @@ class ProjectSpec(BaseModel):
         description="Group name to additionally receive project administrator role",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
 
 

@@ -115,15 +115,15 @@ class ClusterSecretSpec(BaseModel):
         ...,
         description="Prefix for the ArgoCD app name — final name will be {chosen_name}-cluster-secret",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
     )
     app_name: str = Field(
         ...,
         description="Consumer name (e.g. insight, insight-prod) — used as the ArgoCD instance name",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
     )
     application_clusters: list[ApplicationCluster] = Field(
         ...,
@@ -141,8 +141,8 @@ class ClusterSecretUpdateSpec(BaseModel):
 
 
 class ClusterSecretIdentifier(BaseModel):
-    app_name: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
-    chosen_name: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
+    app_name: str = Field(..., min_length=1, max_length=63, pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
+    chosen_name: str = Field(..., min_length=1, max_length=63, pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")
 
 
 _ArgoCDValue = Union[str, bool, int, float]
@@ -177,8 +177,8 @@ class ConsumerConfigSpec(BaseModel):
         ...,
         description="Consumer name — also used as the directory name under consumers/",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$",
     )
     environment: EnvironmentEnum = Field(
         ...,
@@ -195,7 +195,6 @@ class ConsumerConfigSpec(BaseModel):
         description="Active Directory group to grant admin access",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
     g_lines: Optional[list[GLine]] = Field(
         default=None,

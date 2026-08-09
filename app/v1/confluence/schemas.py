@@ -30,8 +30,8 @@ class SpaceSpec(BaseModel):
         default=None,
         description="Username to receive ADMIN permission on the space",
         min_length=1,
-        max_length=50,
-        pattern=r"^[a-z0-9_\-]+$",
+        max_length=14,
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
     admin_group: Optional[str] = Field(
@@ -39,7 +39,6 @@ class SpaceSpec(BaseModel):
         description="Group name to receive ADMIN permission on the space",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-z0-9_\-]+$",
     )
 
     @model_validator(mode="after")
