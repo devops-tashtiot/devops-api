@@ -6,10 +6,10 @@ from tashtiot_apis_library import OperationRequest
 class SpaceSpec(BaseModel):
     key: str = Field(
         ...,
-        description="Space key — uppercase letters and digits only",
+        description="Space key — alphanumeric characters only",
         min_length=1,
         max_length=255,
-        pattern=r"^[A-Z0-9]+$",
+        pattern=r"^[A-Za-z0-9]+$",
     )
 
     name: str = Field(
@@ -85,8 +85,8 @@ class SpaceExportSpec(BaseModel):
         ...,
         description="Key of the space to export",
         min_length=1,
-        max_length=50,
-        pattern=r"^[A-Z][A-Z0-9]*$",
+        max_length=255,
+        pattern=r"^[A-Za-z0-9]+$",
     )
 
 
