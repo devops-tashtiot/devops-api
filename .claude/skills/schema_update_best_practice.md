@@ -16,7 +16,15 @@ When updating Pydantic schemas (especially for external APIs like Bitbucket, Jir
 3. **Validation Ranges**:
    - Always verify constraints against the target service's actual limits. If a DB schema allows 32k characters but UI components break past 1000 characters, enforce the practical limit (e.g., 1000 for descriptions).
    
-4. **Implementation Steps**:
+4. **Admin Users**:
+   - **Pattern**: If the system restricts usernames (e.g., must be lowercase, start with a letter, allow numbers/hyphens but avoid purely alphanumeric non-sense), use an explicit regex like `^[a-z][a-z0-9\-]*$`.
+   - **Length**: Keep under 15 characters (e.g. `max_length=14`).
+
+5. **Admin Groups**:
+   - **Pattern**: Allow extensive characters (slashes, upper/lowercase, Hebrew letters, etc.) if the target system permits it. Do not constrain with a strict regex `pattern` unless the target service absolutely requires it.
+   - **Length**: Commonly up to 255 characters.
+
+6. **Implementation Steps**:
    - Modify the Pydantic `Field` attributes: update `max_length`, `min_length`, and `pattern` according to the researched limits.
    - Run tests to ensure validation constraints are properly applied.
    - Document any adjusted constraints in the corresponding module's `CLAUDE.md` and `README.md`.

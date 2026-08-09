@@ -37,8 +37,8 @@ class ProjectSpec(BaseModel):
         default=None,
         description="Username to receive PROJECT_ADMIN permission",
         min_length=1,
-        max_length=15,
-        pattern=r"^[a-z0-9]+$",
+        max_length=14,
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
     admin_group: Optional[str] = Field(
@@ -46,7 +46,6 @@ class ProjectSpec(BaseModel):
         description="Group name to receive PROJECT_ADMIN permission",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
 
     @model_validator(mode="after")
