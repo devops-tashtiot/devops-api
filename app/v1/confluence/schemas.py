@@ -30,7 +30,7 @@ class SpaceSpec(BaseModel):
         default=None,
         description="Username to receive ADMIN permission on the space",
         min_length=1,
-        max_length=14,
+        max_length=20,
         pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
