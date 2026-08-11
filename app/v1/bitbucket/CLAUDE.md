@@ -16,7 +16,6 @@ Passed into `get_v1_bitbucket_router(bitbucket_client)` at startup — no per-re
 |--------|------|-----------|
 | `POST` | `/` | Create project + assign admin (user and/or group) |
 | `DELETE` | `/{key}` | Delete project |
-| `GET` | `/user-dirs` | List user directories |
 | `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
 > Route paths above are devops-api's own; the upstream Bitbucket endpoints they call are `/rest/crowd/latest/directory` (see below).
@@ -105,24 +104,6 @@ PUT /rest/api/latest/projects/{key}/permissions/groups?name={admin_group}&permis
 → 204
 ```
 
-### List user directories — `GET /rest/crowd/latest/directory`
-
-```
-GET /rest/crowd/latest/directory
-Header: Accept: application/json
-→ 200, {"directory": [{"name": ..., "link": [{"href": "https://.../directory/{id}", "rel": "self"}], "synchronisation"?: {...}}, ...]}
-```
-
-Confirmed against Bitbucket Data Center 10.2.2 with a real AD-connected directory.
-`GET /rest/api/1.0/admin/user-directories` (the Bitbucket-native admin REST API) also works and
-returns a friendlier `{"name", "type", "isActive", "description"}` shape, but **never exposes an
-id field at all** — not even embedded in a link — so it cannot support the sync operation below.
-Bitbucket shares the same Atlassian Crowd-embedded REST resource Jira and Confluence use (see
-`app/v1/jira/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`); its shape matches Confluence's exactly
-(`directory`/`link`, singular), not Jira's (`directories`/`links`, plural) — same underlying
-module, inconsistent JSON key pluralization across products. The numeric ID only exists embedded
-in `link[0].href` (e.g. `.../directory/32769` → `32769`), which `sync_user_directory` parses out.
-
 ### Sync user directory — unsupported, `sync_user_directory` always raises `501`
 
 Bitbucket Data Center has **no supported way to trigger a directory sync on demand**. Investigated
@@ -143,7 +124,7 @@ thoroughly against Bitbucket Data Center 10.2.2 before concluding this:
 
 Reporting `"successful"` on a request that almost always silently does nothing would be worse
 than not having the feature, so `sync_user_directory` raises `HTTPException(501, ...)`
-unconditionally without calling Bitbucket at all. `GET /user-dirs` is unaffected. Tracked publicly
+unconditionally without calling Bitbucket at all. Tracked publicly
 upstream since 2014 in [BSERV-5108](https://jira.atlassian.com/browse/BSERV-5108), still open —
 revisit if Atlassian ever ships this.
 

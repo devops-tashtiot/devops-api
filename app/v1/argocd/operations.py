@@ -1,13 +1,24 @@
 import asyncio
+
 import yaml
-from loguru import logger
 from fastapi import HTTPException
-from tashtiot_apis_library import Git, ArgoCD
-from tashtiot_apis_library.fastapi_template.security import SSOConfig, get_sso_token_client
+from loguru import logger
+from tashtiot_apis_library import ArgoCD, Git
+from tashtiot_apis_library.fastapi_template.security import (
+    SSOConfig,
+    get_sso_token_client,
+)
+
+from app.global_conf import global_config
 
 from .conf import config
-from .schemas import ApplicationCluster, ConsumerConfigSpec, ClusterSecretSpec, ClusterSecretUpdateSpec, ClusterSecretIdentifier
-from app.global_conf import global_config
+from .schemas import (
+    ApplicationCluster,
+    ClusterSecretIdentifier,
+    ClusterSecretSpec,
+    ClusterSecretUpdateSpec,
+    ConsumerConfigSpec,
+)
 
 
 async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
@@ -16,10 +27,17 @@ async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
 
     for ns in namespaces:
         proc = await asyncio.create_subprocess_exec(
-            "kubectl", "auth", "can-i", "*", "*",
-            "--namespace", ns,
-            "--token", cluster.token,
-            "--server", cluster.address,
+            "kubectl",
+            "auth",
+            "can-i",
+            "*",
+            "*",
+            "--namespace",
+            ns,
+            "--token",
+            cluster.token,
+            "--server",
+            cluster.address,
             "--insecure-skip-tls-verify",
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -30,7 +48,9 @@ async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
 
         if stderr_text:
             # kubectl itself errored — bad token, unreachable server, or auth rejection
-            logger.error(f"Cluster '{cluster.name}' ({cluster.address}): kubectl error for namespace '{ns}': {stderr_text}")
+            logger.error(
+                f"Cluster '{cluster.name}' ({cluster.address}): kubectl error for namespace '{ns}': {stderr_text}"
+            )
             raise HTTPException(
                 status_code=401,
                 detail=f"Cluster '{cluster.name}' ({cluster.address}): token is invalid or the server is unreachable. kubectl error: {stderr_text}",
@@ -41,7 +61,9 @@ async def _check_cluster_permissions(cluster: ApplicationCluster) -> None:
 
     if missing_admin:
         missing_str = ", ".join(missing_admin)
-        logger.warning(f"Cluster '{cluster.name}' ({cluster.address}): token lacks admin on: {missing_str}")
+        logger.warning(
+            f"Cluster '{cluster.name}' ({cluster.address}): token lacks admin on: {missing_str}"
+        )
         raise HTTPException(
             status_code=403,
             detail=f"Cluster '{cluster.name}' ({cluster.address}): token is missing admin permission on namespace(s): {missing_str}",
@@ -65,7 +87,9 @@ async def _build_argocd(app_name: str, timeout: int) -> ArgoCD:
     return ArgoCD(base_url, token, timeout)
 
 
-async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec) -> None:
+async def create_cluster_secret(
+    argocd_timeout: int, payload: ClusterSecretSpec
+) -> None:
     for cluster in payload.application_clusters:
         await _check_cluster_permissions(cluster)
 
@@ -73,12 +97,14 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
     helm_params = [{"name": "appName", "value": payload.app_name}]
     for i, cluster in enumerate(payload.application_clusters):
         prefix = f"applicationClusters[{i}]"
-        helm_params.extend([
-            {"name": f"{prefix}.address", "value": cluster.address},
-            {"name": f"{prefix}.namespace", "value": cluster.namespace},
-            {"name": f"{prefix}.name", "value": cluster.name},
-            {"name": f"{prefix}.token", "value": cluster.token},
-        ])
+        helm_params.extend(
+            [
+                {"name": f"{prefix}.address", "value": cluster.address},
+                {"name": f"{prefix}.namespace", "value": cluster.namespace},
+                {"name": f"{prefix}.name", "value": cluster.name},
+                {"name": f"{prefix}.token", "value": cluster.token},
+            ]
+        )
 
     app_body = {
         "metadata": {
@@ -109,38 +135,49 @@ async def create_cluster_secret(argocd_timeout: int, payload: ClusterSecretSpec)
         await argocd.sync(argo_app_name)
         await argocd.wait_for_update(argo_app_name)
     except Exception as e:
-        logger.error(f"Unexpected error creating cluster secret {argo_app_name}: {str(e)}")
+        logger.error(f"Unexpected error creating cluster secret {argo_app_name}: {e!s}")
         raise
 
 
-async def delete_cluster_secret(argocd_timeout: int, params: ClusterSecretIdentifier) -> None:
+async def delete_cluster_secret(
+    argocd_timeout: int, params: ClusterSecretIdentifier
+) -> None:
     argocd = await _build_argocd(params.app_name, argocd_timeout)
     argo_app_name = f"{params.chosen_name}-cluster-secret"
     try:
         await argocd.delete_app(argo_app_name, config.ARGOCD_APP_NAMESPACE, wait=True)
     except Exception as e:
-        logger.error(f"Unexpected error deleting cluster secret {argo_app_name}: {str(e)}")
+        logger.error(f"Unexpected error deleting cluster secret {argo_app_name}: {e!s}")
         raise
 
 
-async def edit_cluster_secret(argocd_timeout: int, app_name: str, chosen_name: str, payload: ClusterSecretUpdateSpec) -> None:
+async def edit_cluster_secret(
+    argocd_timeout: int,
+    app_name: str,
+    chosen_name: str,
+    payload: ClusterSecretUpdateSpec,
+) -> None:
     argocd = await _build_argocd(app_name, argocd_timeout)
     argo_app_name = f"{chosen_name}-cluster-secret"
     helm_params = [{"name": "appName", "value": app_name}]
     for i, cluster in enumerate(payload.application_clusters):
         prefix = f"applicationClusters[{i}]"
-        helm_params.extend([
-            {"name": f"{prefix}.address", "value": cluster.address},
-            {"name": f"{prefix}.namespace", "value": cluster.namespace},
-            {"name": f"{prefix}.name", "value": cluster.name},
-            {"name": f"{prefix}.token", "value": cluster.token},
-        ])
+        helm_params.extend(
+            [
+                {"name": f"{prefix}.address", "value": cluster.address},
+                {"name": f"{prefix}.namespace", "value": cluster.namespace},
+                {"name": f"{prefix}.name", "value": cluster.name},
+                {"name": f"{prefix}.token", "value": cluster.token},
+            ]
+        )
     try:
-        await argocd.modify_parameters(helm_params, argo_app_name, config.ARGOCD_APP_NAMESPACE, "default")
+        await argocd.modify_parameters(
+            helm_params, argo_app_name, config.ARGOCD_APP_NAMESPACE, "default"
+        )
         await argocd.sync(argo_app_name)
         await argocd.wait_for_update(argo_app_name)
     except Exception as e:
-        logger.error(f"Unexpected error editing cluster secret {argo_app_name}: {str(e)}")
+        logger.error(f"Unexpected error editing cluster secret {argo_app_name}: {e!s}")
         raise
 
 
@@ -149,7 +186,7 @@ async def delete_consumer_config(git: Git, env: str, name: str) -> None:
     try:
         await git.delete_file(path, f"Delete consumer config for {name}")
     except Exception as e:
-        logger.error(f"Unexpected error deleting consumer config {name}: {str(e)}")
+        logger.error(f"Unexpected error deleting consumer config {name}: {e!s}")
         raise
 
 
@@ -163,9 +200,9 @@ async def create_consumer_config(git: Git, payload: ConsumerConfigSpec) -> None:
         "ad_admin_group": payload.ad_admin_group,
     }
     all_rbac: list[str] = []
-    for line in (payload.g_lines or []):
+    for line in payload.g_lines or []:
         all_rbac.append(line.to_rbac())
-    for line in (payload.p_lines or []):
+    for line in payload.p_lines or []:
         all_rbac.append(line.to_rbac())
     all_rbac.extend(payload.extra_roles or [])
     if all_rbac:
@@ -173,14 +210,18 @@ async def create_consumer_config(git: Git, payload: ConsumerConfigSpec) -> None:
     if payload.config:
         config_data: dict = {}
         if payload.config.extra_argocd_cm_args:
-            config_data["extra_argocd_cm_args"] = dict(payload.config.extra_argocd_cm_args)
+            config_data["extra_argocd_cm_args"] = dict(
+                payload.config.extra_argocd_cm_args
+            )
         if payload.config.extra_argocd_params:
-            config_data["extra_argocd_params"] = dict(payload.config.extra_argocd_params)
+            config_data["extra_argocd_params"] = dict(
+                payload.config.extra_argocd_params
+            )
         if config_data:
             data["config"] = config_data
     content = yaml.dump(data, default_flow_style=False, sort_keys=False)
     try:
         await git.add_file(path, f"Add consumer config for {payload.name}", content)
     except Exception as e:
-        logger.error(f"Unexpected error creating consumer config {payload.name}: {str(e)}")
+        logger.error(f"Unexpected error creating consumer config {payload.name}: {e!s}")
         raise

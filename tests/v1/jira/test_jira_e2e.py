@@ -35,7 +35,9 @@ REQUEST_METADATA = {
 
 @pytest.fixture(scope="module")
 def jira():
-    with httpx.Client(base_url=JIRA_URL, auth=(JIRA_USER, JIRA_PASS), timeout=30.0) as client:
+    with httpx.Client(
+        base_url=JIRA_URL, auth=(JIRA_USER, JIRA_PASS), timeout=30.0
+    ) as client:
         yield client
 
 
@@ -87,15 +89,18 @@ def test_create_assign_and_delete_project(jira, api, clean_project):
     assert not _project_exists(jira, PROJECT_KEY)
 
     # --- create project via our API ---
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project",
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project",
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
 
@@ -124,16 +129,19 @@ def test_create_with_admin_group_also_assigns_group_role(jira, api, clean_projec
     # role, and admin_group gets it too.
     assert not _project_exists(jira, PROJECT_KEY)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project (group admin)",
-            "admin_user": ADMIN_USER,
-            "admin_group": ADMIN_GROUP,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project (group admin)",
+                "admin_user": ADMIN_USER,
+                "admin_group": ADMIN_GROUP,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
 
@@ -150,32 +158,40 @@ def test_create_with_admin_group_also_assigns_group_role(jira, api, clean_projec
 def test_create_project_group_only_rejected(api):
     # Jira has no concept of a group-led project — confirmed live (see app/v1/jira/CLAUDE.md):
     # admin_user is a required field, so a group-only request never reaches Jira at all.
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "should be rejected before hitting Jira",
-            "admin_group": ADMIN_GROUP,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "should be rejected before hitting Jira",
+                "admin_group": ADMIN_GROUP,
+            },
         },
-    })
+    )
     assert r.status_code == 422, r.text
 
 
 @pytest.mark.integration
-def test_create_project_nonexistent_admin_user_rejected(jira, api, clean_nonexistent_user_project):
+def test_create_project_nonexistent_admin_user_rejected(
+    jira, api, clean_nonexistent_user_project
+):
     key = clean_nonexistent_user_project
     assert not _project_exists(jira, key)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": key,
-            "name": "e2e-nonexistent-admin",
-            "description": "Should be rejected by Jira — lead does not exist",
-            "admin_user": "definitely-not-a-real-jira-user",
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": key,
+                "name": "e2e-nonexistent-admin",
+                "description": "Should be rejected by Jira — lead does not exist",
+                "admin_user": "definitely-not-a-real-jira-user",
+            },
         },
-    })
+    )
 
     assert r.status_code >= 400, r.text
     assert r.json()["status"] == "Failed"
@@ -190,15 +206,18 @@ def test_delete_project_twice_second_returns_404(jira, api, clean_project):
     # variant instead.
     assert not _project_exists(jira, PROJECT_KEY)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "Idempotent delete test",
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "Idempotent delete test",
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert _project_exists(jira, PROJECT_KEY)
 
@@ -222,23 +241,6 @@ def test_delete_nonexistent_project_returns_404(jira, api):
     r = api.delete(f"{PREFIX}/{key}")
     assert r.status_code == 404, r.text
     assert r.json()["status"] == "Failed"
-
-
-@pytest.mark.integration
-def test_list_user_directories(jira, api):
-    # --- list via our API ---
-    r = api.get(f"{PREFIX}/user-dirs")
-    assert r.status_code == 200, r.text
-    directories = r.json()
-    assert isinstance(directories, list)
-    assert len(directories) > 0, "Jira has no configured user directories"
-
-    # --- cross-check against Jira directly (same Crowd-embedded resource) ---
-    direct = jira.get("/rest/crowd/latest/directory", headers={"Accept": "application/json"})
-    assert direct.status_code == 200, direct.text
-    direct_names = {d["name"] for d in direct.json()["directories"]}
-    api_names = {d["name"] for d in directories}
-    assert api_names == direct_names
 
 
 @pytest.mark.integration

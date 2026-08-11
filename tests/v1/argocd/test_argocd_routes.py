@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from app.v1.argocd.conf import config
 from app.global_conf import global_config
+from app.v1.argocd.conf import config
 
 PREFIX = config.API_PREFIX
 VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
@@ -53,6 +53,7 @@ VALID_CLUSTER_UPDATE_PAYLOAD = {
 
 # GET /sizes
 
+
 def test_get_sizes_returns_200(client):
     assert client.get(f"{PREFIX}/sizes").status_code == 200
 
@@ -64,6 +65,7 @@ def test_get_sizes_returns_nonempty_list(client):
 
 # GET /include-resources
 
+
 def test_get_include_resources_returns_200(client):
     assert client.get(f"{PREFIX}/include-resources").status_code == 200
 
@@ -74,6 +76,7 @@ def test_get_include_resources_returns_nonempty_list(client):
 
 
 # GET /rbac-resources
+
 
 def test_get_rbac_resources_returns_200(client):
     assert client.get(f"{PREFIX}/rbac-resources").status_code == 200
@@ -87,6 +90,7 @@ def test_get_rbac_resources_returns_nonempty_list(client):
 
 # GET /rbac-actions
 
+
 def test_get_rbac_actions_returns_200(client):
     assert client.get(f"{PREFIX}/rbac-actions").status_code == 200
 
@@ -99,6 +103,7 @@ def test_get_rbac_actions_returns_nonempty_list(client):
 
 # GET /environments
 
+
 def test_get_environments_returns_200(client):
     assert client.get(f"{PREFIX}/environments").status_code == 200
 
@@ -109,6 +114,7 @@ def test_get_environments_returns_nonempty_list(client):
 
 
 # POST /  (create consumer config)
+
 
 def test_create_consumer_returns_200(client):
     response = client.post(f"{PREFIX}/", json=VALID_CONSUMER_PAYLOAD)
@@ -129,26 +135,39 @@ def test_create_consumer_path_contains_env_and_name(client, mock_git):
 
 
 def test_create_consumer_invalid_name_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "name": "bad name!"}}
+    payload = {
+        **VALID_CONSUMER_PAYLOAD,
+        "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "name": "bad name!"},
+    }
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 def test_create_consumer_invalid_env_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "environment": "nonexistent-env"}}
+    payload = {
+        **VALID_CONSUMER_PAYLOAD,
+        "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "environment": "nonexistent-env"},
+    }
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 def test_create_consumer_invalid_size_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "size": "supersize"}}
+    payload = {
+        **VALID_CONSUMER_PAYLOAD,
+        "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "size": "supersize"},
+    }
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 def test_create_consumer_invalid_resource_returns_422(client):
-    payload = {**VALID_CONSUMER_PAYLOAD, "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "include_resources": ["Pod"]}}
+    payload = {
+        **VALID_CONSUMER_PAYLOAD,
+        "spec": {**VALID_CONSUMER_PAYLOAD["spec"], "include_resources": ["Pod"]},
+    }
     assert client.post(f"{PREFIX}/", json=payload).status_code == 422
 
 
 # DELETE /{env}/{name}  (delete consumer config)
+
 
 def test_delete_consumer_returns_200(client):
     response = client.delete(f"{PREFIX}/{VALID_ENV}/my-consumer")
@@ -170,6 +189,7 @@ def test_delete_consumer_path_contains_env_and_name(client, mock_git):
 
 # POST /cluster-secret
 
+
 def _mock_argocd_for_create():
     argocd = MagicMock()
     argocd.create_app = AsyncMock(return_value=None)
@@ -180,17 +200,35 @@ def _mock_argocd_for_create():
 
 def test_create_cluster_secret_returns_200(client):
     mock_argocd = _mock_argocd_for_create()
-    with patch("app.v1.argocd.operations._check_cluster_permissions", new=AsyncMock(return_value=None)), \
-         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
-        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    with (
+        patch(
+            "app.v1.argocd.operations._check_cluster_permissions",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.v1.argocd.operations._build_argocd",
+            new=AsyncMock(return_value=mock_argocd),
+        ),
+    ):
+        response = client.post(
+            f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD
+        )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
 
 
 def test_create_cluster_secret_calls_create_app_and_sync(client):
     mock_argocd = _mock_argocd_for_create()
-    with patch("app.v1.argocd.operations._check_cluster_permissions", new=AsyncMock(return_value=None)), \
-         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with (
+        patch(
+            "app.v1.argocd.operations._check_cluster_permissions",
+            new=AsyncMock(return_value=None),
+        ),
+        patch(
+            "app.v1.argocd.operations._build_argocd",
+            new=AsyncMock(return_value=mock_argocd),
+        ),
+    ):
         client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
     assert mock_argocd.create_app.call_count == 1
     assert mock_argocd.sync.call_count == 1
@@ -198,12 +236,16 @@ def test_create_cluster_secret_calls_create_app_and_sync(client):
 
 
 def test_create_cluster_secret_missing_clusters_returns_422(client):
-    payload = {**VALID_CLUSTER_SECRET_PAYLOAD, "spec": {**VALID_CLUSTER_SECRET_PAYLOAD["spec"], "application_clusters": []}}
+    payload = {
+        **VALID_CLUSTER_SECRET_PAYLOAD,
+        "spec": {**VALID_CLUSTER_SECRET_PAYLOAD["spec"], "application_clusters": []},
+    }
     assert client.post(f"{PREFIX}/cluster-secret", json=payload).status_code == 422
 
 
 # POST /cluster-secret — _check_cluster_permissions itself (not mocked away), only the
 # underlying kubectl subprocess call is faked, so the real 401/403 branch logic executes.
+
 
 def _mock_subprocess(stdout: bytes, stderr: bytes):
     proc = MagicMock()
@@ -213,24 +255,43 @@ def _mock_subprocess(stdout: bytes, stderr: bytes):
 
 def test_check_cluster_permissions_allows_when_stdout_yes(client):
     mock_argocd = _mock_argocd_for_create()
-    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=_mock_subprocess(b"yes\n", b"")), \
-         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
-        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    with (
+        patch(
+            "app.v1.argocd.operations.asyncio.create_subprocess_exec",
+            new=_mock_subprocess(b"yes\n", b""),
+        ),
+        patch(
+            "app.v1.argocd.operations._build_argocd",
+            new=AsyncMock(return_value=mock_argocd),
+        ),
+    ):
+        response = client.post(
+            f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD
+        )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
 
 
 def test_check_cluster_permissions_401_on_stderr(client):
-    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec",
-               new=_mock_subprocess(b"", b"error: You must be logged in to the server")):
-        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    with patch(
+        "app.v1.argocd.operations.asyncio.create_subprocess_exec",
+        new=_mock_subprocess(b"", b"error: You must be logged in to the server"),
+    ):
+        response = client.post(
+            f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD
+        )
     assert response.status_code == 401
     assert "token is invalid or the server is unreachable" in response.json()["stdout"]
 
 
 def test_check_cluster_permissions_403_on_no_admin(client):
-    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=_mock_subprocess(b"no\n", b"")):
-        response = client.post(f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD)
+    with patch(
+        "app.v1.argocd.operations.asyncio.create_subprocess_exec",
+        new=_mock_subprocess(b"no\n", b""),
+    ):
+        response = client.post(
+            f"{PREFIX}/cluster-secret", json=VALID_CLUSTER_SECRET_PAYLOAD
+        )
     assert response.status_code == 403
     assert "missing admin permission" in response.json()["stdout"]
 
@@ -245,8 +306,13 @@ def test_check_cluster_permissions_checks_each_namespace(client):
             "application_clusters": [{**VALID_CLUSTER, "namespace": "ns1,ns2"}],
         },
     }
-    with patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=mock_exec), \
-         patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with (
+        patch("app.v1.argocd.operations.asyncio.create_subprocess_exec", new=mock_exec),
+        patch(
+            "app.v1.argocd.operations._build_argocd",
+            new=AsyncMock(return_value=mock_argocd),
+        ),
+    ):
         response = client.post(f"{PREFIX}/cluster-secret", json=payload)
     assert response.status_code == 200
     assert mock_exec.call_count == 2
@@ -254,10 +320,14 @@ def test_check_cluster_permissions_checks_each_namespace(client):
 
 # DELETE /cluster-secret
 
+
 def test_delete_cluster_secret_returns_200(client):
     mock_argocd = MagicMock()
     mock_argocd.delete_app = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch(
+        "app.v1.argocd.operations._build_argocd",
+        new=AsyncMock(return_value=mock_argocd),
+    ):
         response = client.delete(
             f"{PREFIX}/cluster-secret",
             params={"app_name": "netanel", "chosen_name": "nati"},
@@ -269,7 +339,10 @@ def test_delete_cluster_secret_returns_200(client):
 def test_delete_cluster_secret_calls_delete_app_once(client):
     mock_argocd = MagicMock()
     mock_argocd.delete_app = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch(
+        "app.v1.argocd.operations._build_argocd",
+        new=AsyncMock(return_value=mock_argocd),
+    ):
         client.delete(
             f"{PREFIX}/cluster-secret",
             params={"app_name": "netanel", "chosen_name": "nati"},
@@ -280,12 +353,16 @@ def test_delete_cluster_secret_calls_delete_app_once(client):
 
 # PUT /cluster-secret/{app_name}/{chosen_name}
 
+
 def test_edit_cluster_secret_returns_200(client):
     mock_argocd = MagicMock()
     mock_argocd.modify_parameters = AsyncMock(return_value=None)
     mock_argocd.sync = AsyncMock(return_value=None)
     mock_argocd.wait_for_update = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch(
+        "app.v1.argocd.operations._build_argocd",
+        new=AsyncMock(return_value=mock_argocd),
+    ):
         response = client.put(
             f"{PREFIX}/cluster-secret/netanel/nati",
             json=VALID_CLUSTER_UPDATE_PAYLOAD,
@@ -299,7 +376,10 @@ def test_edit_cluster_secret_calls_modify_and_sync(client):
     mock_argocd.modify_parameters = AsyncMock(return_value=None)
     mock_argocd.sync = AsyncMock(return_value=None)
     mock_argocd.wait_for_update = AsyncMock(return_value=None)
-    with patch("app.v1.argocd.operations._build_argocd", new=AsyncMock(return_value=mock_argocd)):
+    with patch(
+        "app.v1.argocd.operations._build_argocd",
+        new=AsyncMock(return_value=mock_argocd),
+    ):
         client.put(
             f"{PREFIX}/cluster-secret/netanel/nati",
             json=VALID_CLUSTER_UPDATE_PAYLOAD,

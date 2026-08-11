@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -18,15 +19,31 @@ VALID_METADATA = {
 
 VALID_USER_PAYLOAD = {
     "metadata": VALID_METADATA,
-    "spec": {"key": "TESTSP", "name": "Test Space", "description": "A test space", "admin_user": "admin"},
+    "spec": {
+        "key": "TESTSP",
+        "name": "Test Space",
+        "description": "A test space",
+        "admin_user": "admin",
+    },
 }
 VALID_GROUP_PAYLOAD = {
     "metadata": VALID_METADATA,
-    "spec": {"key": "GRPSP", "name": "Group Space", "description": "A group space", "admin_group": "dev-team"},
+    "spec": {
+        "key": "GRPSP",
+        "name": "Group Space",
+        "description": "A group space",
+        "admin_group": "dev-team",
+    },
 }
 VALID_BOTH_PAYLOAD = {
     "metadata": VALID_METADATA,
-    "spec": {"key": "BOTHSP", "name": "Both Space", "description": "Both admins", "admin_user": "admin", "admin_group": "dev-team"},
+    "spec": {
+        "key": "BOTHSP",
+        "name": "Both Space",
+        "description": "Both admins",
+        "admin_user": "admin",
+        "admin_group": "dev-team",
+    },
 }
 
 
@@ -58,6 +75,7 @@ def client(mock_confluence_client):
 
 
 # --- create space ---
+
 
 def test_create_space_with_user_returns_200(client):
     response = client.post(f"{PREFIX}/", json=VALID_USER_PAYLOAD)
@@ -104,7 +122,9 @@ def test_create_space_with_both_assigns_user_and_group(client, mock_confluence_c
 
 
 def test_create_space_confluence_error_returns_error_response(mock_confluence_client):
-    mock_confluence_client.post = AsyncMock(return_value=MagicMock(status_code=400, text="Bad request"))
+    mock_confluence_client.post = AsyncMock(
+        return_value=MagicMock(status_code=400, text="Bad request")
+    )
     app = FastAPI()
     app.include_router(get_v1_confluence_router(mock_confluence_client))
     c = TestClient(app)
@@ -117,13 +137,18 @@ def test_create_space_confluence_error_returns_error_response(mock_confluence_cl
 # Confluence's DELETE /space/{key} only accepts the deletion — the space is removed
 # asynchronously. delete_space polls GET /space/{key} until it 404s before reporting success.
 
+
 def test_delete_space_returns_200_once_confirmed_gone(client, mock_confluence_client):
-    mock_confluence_client.delete = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+    mock_confluence_client.delete = AsyncMock(
+        return_value=MagicMock(status_code=200, text="")
+    )
     # First poll still finds the space (200), second poll confirms it's gone (404).
-    mock_confluence_client.get = AsyncMock(side_effect=[
-        MagicMock(status_code=200, text=""),
-        MagicMock(status_code=404, text=""),
-    ])
+    mock_confluence_client.get = AsyncMock(
+        side_effect=[
+            MagicMock(status_code=200, text=""),
+            MagicMock(status_code=404, text=""),
+        ]
+    )
 
     response = client.delete(f"{PREFIX}/ZAITEST")
     assert response.status_code == 200
@@ -137,8 +162,12 @@ def test_delete_space_times_out_if_never_confirmed(mock_confluence_client, monke
     monkeypatch.setattr(confluence_ops.config, "CONFLUENCE_JOB_MAX_POLLS", 2)
     monkeypatch.setattr(confluence_ops.config, "CONFLUENCE_JOB_POLL_INTERVAL", 0)
 
-    mock_confluence_client.delete = AsyncMock(return_value=MagicMock(status_code=200, text=""))
-    mock_confluence_client.get = AsyncMock(return_value=MagicMock(status_code=200, text=""))  # never 404s
+    mock_confluence_client.delete = AsyncMock(
+        return_value=MagicMock(status_code=200, text="")
+    )
+    mock_confluence_client.get = AsyncMock(
+        return_value=MagicMock(status_code=200, text="")
+    )  # never 404s
 
     app = FastAPI()
     app.include_router(get_v1_confluence_router(mock_confluence_client))
@@ -150,7 +179,9 @@ def test_delete_space_times_out_if_never_confirmed(mock_confluence_client, monke
 
 
 def test_delete_space_error_returns_error_response(mock_confluence_client):
-    mock_confluence_client.delete = AsyncMock(return_value=MagicMock(status_code=404, text="Not found"))
+    mock_confluence_client.delete = AsyncMock(
+        return_value=MagicMock(status_code=404, text="Not found")
+    )
     app = FastAPI()
     app.include_router(get_v1_confluence_router(mock_confluence_client))
     c = TestClient(app)
@@ -158,48 +189,3 @@ def test_delete_space_error_returns_error_response(mock_confluence_client):
     assert response.status_code == 404
     assert response.json()["status"] == "Failed"
     mock_confluence_client.get.assert_not_called()
-
-
-# --- user-dirs ---
-
-def test_list_user_dirs_returns_200(mock_confluence_client):
-    dirs_response = MagicMock()
-    dirs_response.status_code = 200
-    dirs_response.text = ""
-    dirs_response.json.return_value = {"directory": [{"name": "Internal Dir"}]}
-    mock_confluence_client.get = AsyncMock(return_value=dirs_response)
-
-    app = FastAPI()
-    app.include_router(get_v1_confluence_router(mock_confluence_client))
-    c = TestClient(app)
-    response = c.get(f"{PREFIX}/user-dirs")
-    assert response.status_code == 200
-    assert response.json() == [{"name": "Internal Dir"}]
-
-
-def test_list_user_dirs_calls_crowd_endpoint(mock_confluence_client):
-    dirs_response = MagicMock()
-    dirs_response.status_code = 200
-    dirs_response.text = ""
-    dirs_response.json.return_value = {"directory": []}
-    mock_confluence_client.get = AsyncMock(return_value=dirs_response)
-
-    app = FastAPI()
-    app.include_router(get_v1_confluence_router(mock_confluence_client))
-    c = TestClient(app)
-    c.get(f"{PREFIX}/user-dirs")
-    endpoint = mock_confluence_client.get.call_args.args[0]
-    assert "crowd" in endpoint
-    assert "directory" in endpoint
-
-
-def test_sync_user_dir_returns_501_not_supported(client, mock_confluence_client):
-    # Confluence has no supported way to trigger a directory sync on demand — confirmed live
-    # (see app/v1/bitbucket/CLAUDE.md for the shared investigation): the Crowd-embedded
-    # synchronise path 404s even with a correct connector directory ID. Must always return
-    # 501 without attempting any call to Confluence.
-    response = client.post(f"{PREFIX}/user-dirs/sync")
-    assert response.status_code == 501
-    assert response.json()["status"] == "Failed"
-    mock_confluence_client.get.assert_not_called()
-    mock_confluence_client.post.assert_not_called()

@@ -1,15 +1,16 @@
 import asyncio
 import json
 import re
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any
 
 from fastapi import HTTPException
 from loguru import logger
 
-from .conf import config
-from .schemas import PluginInstallSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec
 from app.global_conf import global_config
 from app.helpers import fetch_from_s3, upload_to_s3
+
+from .conf import config
+from .schemas import PluginInstallSpec, SpaceExportSpec, SpaceImportSpec, SpaceSpec
 
 
 def _handle_response(response):
@@ -39,7 +40,7 @@ async def create_space(confluence_client: Any, payload: SpaceSpec):
         response = await confluence_client.post(endpoint, json=body)
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error creating space {key}: {str(e)}")
+        logger.error(f"Unexpected error creating space {key}: {e!s}")
         raise
 
 
@@ -54,7 +55,7 @@ async def delete_space(confluence_client: Any, key: str):
         response = await confluence_client.delete(endpoint)
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error deleting space {key}: {str(e)}")
+        logger.error(f"Unexpected error deleting space {key}: {e!s}")
         raise
 
     for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
@@ -73,15 +74,20 @@ async def delete_space(confluence_client: Any, key: str):
 async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):
     key, admin_user = payload.key, payload.admin_user
     try:
-        user_resp = await confluence_client.get(f"{config.CONFLUENCE_ENDPOINT}/user?username={admin_user}")
+        user_resp = await confluence_client.get(
+            f"{config.CONFLUENCE_ENDPOINT}/user?username={admin_user}"
+        )
         _handle_response(user_resp)
         user_key = user_resp.json().get("userKey")
 
         grant_endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}/permissions/user/{user_key}/grant"
-        for op in [{"operationKey": "read", "targetType": "space"}, {"operationKey": "administer", "targetType": "space"}]:
+        for op in [
+            {"operationKey": "read", "targetType": "space"},
+            {"operationKey": "administer", "targetType": "space"},
+        ]:
             _handle_response(await confluence_client.put(grant_endpoint, json=[op]))
     except Exception as e:
-        logger.error(f"Unexpected error assigning user admin to space {key}: {str(e)}")
+        logger.error(f"Unexpected error assigning user admin to space {key}: {e!s}")
         raise
 
 
@@ -89,10 +95,13 @@ async def assign_space_group_admin(confluence_client: Any, payload: SpaceSpec):
     key, admin_group = payload.key, payload.admin_group
     try:
         grant_endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}/permissions/group/{admin_group}/grant"
-        for op in [{"operationKey": "read", "targetType": "space"}, {"operationKey": "administer", "targetType": "space"}]:
+        for op in [
+            {"operationKey": "read", "targetType": "space"},
+            {"operationKey": "administer", "targetType": "space"},
+        ]:
             _handle_response(await confluence_client.put(grant_endpoint, json=[op]))
     except Exception as e:
-        logger.error(f"Unexpected error assigning group admin to space {key}: {str(e)}")
+        logger.error(f"Unexpected error assigning group admin to space {key}: {e!s}")
         raise
 
 
@@ -108,14 +117,18 @@ async def get_upm_token(confluence_client: Any) -> str:
         _handle_response(response)
         token = response.headers.get("upm-token")
         if not token:
-            raise HTTPException(status_code=502, detail="Confluence did not return a upm-token header")
+            raise HTTPException(
+                status_code=502, detail="Confluence did not return a upm-token header"
+            )
         logger.info("Fetched UPM token from Confluence")
         return token
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to get UPM token: {e}")
-        raise HTTPException(status_code=502, detail=f"UPM token fetch failed: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"UPM token fetch failed: {e}"
+        ) from e
 
 
 def _parse_upm_task_response(response) -> dict:
@@ -128,7 +141,9 @@ def _parse_upm_task_response(response) -> dict:
     return json.loads(match.group(1) if match else text)
 
 
-async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_name: str, upm_token: str) -> None:
+async def install_plugin(
+    confluence_client: Any, plugin_bytes: bytes, plugin_name: str, upm_token: str
+) -> None:
     # UPM install is asynchronous — confirmed live: the initial POST returns 202 with
     # "done": false and a polling link, not a completed result. Firing the POST and reporting
     # success immediately (the old behavior) is a lie: a caller that then checks whether the
@@ -146,7 +161,9 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
         raise
     except Exception as e:
         logger.error(f"Failed to install plugin {plugin_name}: {e}")
-        raise HTTPException(status_code=502, detail=f"Plugin install failed: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Plugin install failed: {e}"
+        ) from e
 
     task_url = task["links"]["self"]
     for attempt in range(config.CONFLUENCE_JOB_MAX_POLLS):
@@ -154,8 +171,12 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
         if status["done"]:
             if "err" in status.get("contentType", ""):
                 error_msg = status.get("errorMessage", "Unknown UPM install error")
-                raise HTTPException(status_code=422, detail=f"Plugin install failed: {error_msg}")
-            logger.info(f"Installed plugin {plugin_name} via UPM after {attempt} poll(s)")
+                raise HTTPException(
+                    status_code=422, detail=f"Plugin install failed: {error_msg}"
+                )
+            logger.info(
+                f"Installed plugin {plugin_name} via UPM after {attempt} poll(s)"
+            )
             return
         await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
         try:
@@ -171,38 +192,14 @@ async def install_plugin(confluence_client: Any, plugin_bytes: bytes, plugin_nam
             raise
         except Exception as e:
             logger.error(f"Error polling plugin install task for {plugin_name}: {e}")
-            raise HTTPException(status_code=502, detail=f"Error polling plugin install: {e}")
+            raise HTTPException(
+                status_code=502, detail=f"Error polling plugin install: {e}"
+            ) from e
     raise HTTPException(
         status_code=504,
         detail=f"Plugin install for {plugin_name} did not finish within "
         f"{config.CONFLUENCE_JOB_MAX_POLLS * config.CONFLUENCE_JOB_POLL_INTERVAL:.0f}s",
     )
-
-
-# async def list_user_directories(confluence_client: Any) -> list[dict]:
-#     endpoint = f"{config.CONFLUENCE_CROWD_ENDPOINT}/directory"
-#     try:
-#         response = await confluence_client.get(endpoint, headers={"Accept": "application/json"})
-#         _handle_response(response)
-#         return response.json()["directory"]
-#     except Exception as e:
-#         logger.error(f"Unexpected error listing user directories: {str(e)}")
-#         raise
-
-
-# async def sync_user_directory(confluence_client: Any) -> None:
-#     # Confluence has no supported way to manually trigger a directory sync — confirmed live
-#     # against a real AD-connector directory ID: POST /rest/crowd/latest/directory/{id}/synchronise
-#     # 404s (identical to Bitbucket, see app/v1/bitbucket/CLAUDE.md for the full investigation —
-#     # same underlying Atlassian Crowd-embedded module, same missing REST trigger, same undocumented
-#     # web-UI-only alternative that proved unreliable there). Directories sync on Confluence's own
-#     # automatic schedule; there is no reliable programmatic way to force one on demand.
-#     raise HTTPException(
-#         status_code=501,
-#         detail="Confluence has no supported API to trigger a user directory sync on demand. "
-#         "Directories sync on Confluence's own automatic schedule; use the admin UI to check "
-#         "status, not this endpoint to force one.",
-#     )
 
 
 async def uninstall_plugin(confluence_client: Any, plugin_key: str) -> None:
@@ -216,13 +213,19 @@ async def uninstall_plugin(confluence_client: Any, plugin_key: str) -> None:
         raise
     except Exception as e:
         logger.error(f"Failed to uninstall plugin {plugin_key}: {e}")
-        raise HTTPException(status_code=502, detail=f"Plugin uninstall failed: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Plugin uninstall failed: {e}"
+        ) from e
 
 
-async def trigger_space_export(confluence_client: Any, payload: SpaceExportSpec) -> tuple[int, str]:
+async def trigger_space_export(
+    confluence_client: Any, payload: SpaceExportSpec
+) -> tuple[int, str]:
     endpoint = f"{config.CONFLUENCE_BACKUP_RESTORE_ENDPOINT}/backup/space"
     try:
-        response = await confluence_client.post(endpoint, json={"spaceKeys": [payload.space_key]})
+        response = await confluence_client.post(
+            endpoint, json={"spaceKeys": [payload.space_key]}
+        )
         _handle_response(response)
         job = response.json()
         logger.info(f"Export job {job['id']} created for space {payload.space_key}")
@@ -231,7 +234,9 @@ async def trigger_space_export(confluence_client: Any, payload: SpaceExportSpec)
         raise
     except Exception as e:
         logger.error(f"Failed to trigger export for space {payload.space_key}: {e}")
-        raise HTTPException(status_code=502, detail=f"Space export trigger failed: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Space export trigger failed: {e}"
+        ) from e
 
 
 async def poll_export_job(confluence_client: Any, job_id: int) -> None:
@@ -248,12 +253,17 @@ async def poll_export_job(confluence_client: Any, job_id: int) -> None:
                 return
             if state == "FAILED":
                 error_msg = job.get("errorMessage", "Unknown error")
-                raise HTTPException(status_code=422, detail=f"Confluence space export failed: {error_msg}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Confluence space export failed: {error_msg}",
+                )
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error polling export job {job_id}: {e}")
-            raise HTTPException(status_code=502, detail=f"Error polling export job: {e}")
+            raise HTTPException(
+                status_code=502, detail=f"Error polling export job: {e}"
+            ) from e
         await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
     raise HTTPException(
         status_code=504,
@@ -266,25 +276,31 @@ async def download_export(confluence_client: Any, job_id: int) -> bytes:
     try:
         response = await confluence_client.get(endpoint)
         _handle_response(response)
-        logger.info(f"Downloaded export archive for job {job_id} ({len(response.content)} bytes)")
+        logger.info(
+            f"Downloaded export archive for job {job_id} ({len(response.content)} bytes)"
+        )
         return response.content
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Failed to download export for job {job_id}: {e}")
-        raise HTTPException(status_code=502, detail=f"Export download failed: {e}")
+        raise HTTPException(
+            status_code=502, detail=f"Export download failed: {e}"
+        ) from e
 
 
 async def upload_archive_to_s3(archive_bytes: bytes, archive_name: str) -> None:
     url = f"{global_config.CONFLUENCE_S3_IMPORTS_BASE_URL}/{archive_name}"
-    await upload_to_s3(url, archive_bytes, content_type="application/zip", label=archive_name)
+    await upload_to_s3(
+        url, archive_bytes, content_type="application/zip", label=archive_name
+    )
 
 
 async def upload_plugin_to_s3(plugin_bytes: bytes, plugin_name: str) -> None:
     url = f"{global_config.CONFLUENCE_S3_PLUGINS_BASE_URL}/{plugin_name}"
-    await upload_to_s3(url, plugin_bytes, content_type="application/java-archive", label=plugin_name)
-
-
+    await upload_to_s3(
+        url, plugin_bytes, content_type="application/java-archive", label=plugin_name
+    )
 
 
 async def fetch_archive_from_s3(payload: SpaceImportSpec) -> bytes:
@@ -292,7 +308,9 @@ async def fetch_archive_from_s3(payload: SpaceImportSpec) -> bytes:
     return await fetch_from_s3(url, label=payload.archive_name)
 
 
-async def upload_archive_and_start_restore(confluence_client: Any, archive_bytes: bytes, archive_name: str) -> int:
+async def upload_archive_and_start_restore(
+    confluence_client: Any, archive_bytes: bytes, archive_name: str
+) -> int:
     endpoint = f"{config.CONFLUENCE_BACKUP_RESTORE_ENDPOINT}/restore/space/upload"
     try:
         response = await confluence_client.post(
@@ -307,8 +325,12 @@ async def upload_archive_and_start_restore(confluence_client: Any, archive_bytes
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to upload archive {archive_name} to Confluence restore API: {e}")
-        raise HTTPException(status_code=502, detail=f"Confluence restore upload failed: {e}")
+        logger.error(
+            f"Failed to upload archive {archive_name} to Confluence restore API: {e}"
+        )
+        raise HTTPException(
+            status_code=502, detail=f"Confluence restore upload failed: {e}"
+        ) from e
 
 
 async def poll_restore_job(confluence_client: Any, job_id: int) -> dict:
@@ -325,12 +347,17 @@ async def poll_restore_job(confluence_client: Any, job_id: int) -> dict:
                 return job
             if state == "FAILED":
                 error_msg = job.get("errorMessage", "Unknown error")
-                raise HTTPException(status_code=422, detail=f"Confluence space restore failed: {error_msg}")
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Confluence space restore failed: {error_msg}",
+                )
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error polling restore job {job_id}: {e}")
-            raise HTTPException(status_code=502, detail=f"Error polling restore job: {e}")
+            raise HTTPException(
+                status_code=502, detail=f"Error polling restore job: {e}"
+            ) from e
         await asyncio.sleep(config.CONFLUENCE_JOB_POLL_INTERVAL)
     raise HTTPException(
         status_code=504,

@@ -3,7 +3,6 @@ from pydantic import ValidationError
 
 from app.v1.bitbucket.schemas import ProjectSpec
 
-
 VALID = {
     "key": "MYPROJ",
     "name": "my-project",

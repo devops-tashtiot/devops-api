@@ -1,16 +1,21 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.global_conf import global_config
 from app.v1.sonarqube.conf import config
-from app.v1.sonarqube.operations import SONARQUBE_GLOBAL_PERMISSIONS, SONARQUBE_TEMPLATE_PERMISSIONS
+from app.v1.sonarqube.operations import (
+    SONARQUBE_GLOBAL_PERMISSIONS,
+    SONARQUBE_TEMPLATE_PERMISSIONS,
+)
 from app.v1.sonarqube.routes import get_v1_sonarqube_router
 
 PREFIX = config.API_PREFIX
 # 1 create + N global permissions + N template permissions
-EXPECTED_CALL_COUNT = 1 + len(SONARQUBE_GLOBAL_PERMISSIONS) + len(SONARQUBE_TEMPLATE_PERMISSIONS)
+EXPECTED_CALL_COUNT = (
+    1 + len(SONARQUBE_GLOBAL_PERMISSIONS) + len(SONARQUBE_TEMPLATE_PERMISSIONS)
+)
 
 VALID_METADATA = {
     "project": "test-project",
@@ -47,7 +52,8 @@ def test_create_group_assigns_all_global_permissions(client, mock_sonar_client):
     client.post(f"{PREFIX}/", json=VALID_PAYLOAD)
     calls = mock_sonar_client.post.call_args_list
     global_calls = [
-        c for c in calls
+        c
+        for c in calls
         if "permissions/add_group" in c.args[0] and "template" not in c.args[0]
     ]
     granted = {c.kwargs["params"]["permission"] for c in global_calls}
@@ -66,7 +72,9 @@ def test_create_group_assigns_all_template_permissions(client, mock_sonar_client
     assert granted == set(SONARQUBE_TEMPLATE_PERMISSIONS)
     for c in template_calls:
         assert c.kwargs["params"]["groupName"] == "check"
-        assert c.kwargs["params"]["templateName"] == config.SONARQUBE_ADMIN_TEMPLATE_NAME
+        assert (
+            c.kwargs["params"]["templateName"] == config.SONARQUBE_ADMIN_TEMPLATE_NAME
+        )
 
 
 def test_create_group_already_exists_returns_400(mock_sonar_client):
@@ -106,12 +114,24 @@ def test_create_group_already_exists_does_not_rollback(mock_sonar_client):
 
 
 def test_create_group_invalid_name_returns_422(client):
-    response = client.post(f"{PREFIX}/", json={"metadata": VALID_METADATA, "spec": {"consumer_name": "test-consumer", "name": "invalid name!"}})
+    response = client.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": VALID_METADATA,
+            "spec": {"consumer_name": "test-consumer", "name": "invalid name!"},
+        },
+    )
     assert response.status_code == 422
 
 
 def test_create_group_empty_name_returns_422(client):
-    response = client.post(f"{PREFIX}/", json={"metadata": VALID_METADATA, "spec": {"consumer_name": "test-consumer", "name": ""}})
+    response = client.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": VALID_METADATA,
+            "spec": {"consumer_name": "test-consumer", "name": ""},
+        },
+    )
     assert response.status_code == 422
 
 
@@ -130,7 +150,9 @@ def test_delete_group_calls_delete_endpoint(client, mock_sonar_client):
 
 
 def test_delete_group_error_returns_error_response(mock_sonar_client):
-    mock_sonar_client.post = AsyncMock(return_value=MagicMock(status_code=404, text="Group not found"))
+    mock_sonar_client.post = AsyncMock(
+        return_value=MagicMock(status_code=404, text="Group not found")
+    )
 
     app = FastAPI()
     app.include_router(get_v1_sonarqube_router(MagicMock()))
@@ -185,13 +207,17 @@ def test_create_group_permission_failure_triggers_rollback(mock_sonar_client):
     assert any("user_groups/delete" in ep for ep in endpoints)
 
 
-def test_create_group_permission_failure_error_message_uses_errors_list(mock_sonar_client):
+def test_create_group_permission_failure_error_message_uses_errors_list(
+    mock_sonar_client,
+):
     # _handle_response prefers errors[0]["msg"] over response.text when SonarQube's real error
     # shape ({"errors": [{"msg": "..."}]}) is present — previously only the empty-errors
     # fallback-to-text path had coverage (test_create_group_already_exists_returns_400).
     ok = MagicMock(status_code=200, text="")
     perm_failure = MagicMock(status_code=500, text="ignored when errors[] is present")
-    perm_failure.json = MagicMock(return_value={"errors": [{"msg": "Malformed permission name"}]})
+    perm_failure.json = MagicMock(
+        return_value={"errors": [{"msg": "Malformed permission name"}]}
+    )
     mock_sonar_client.post = AsyncMock(side_effect=[ok, perm_failure, ok])
 
     app = FastAPI()
@@ -223,7 +249,11 @@ def test_get_sizes_returns_200(client):
 
 CONSUMER_PAYLOAD = {
     "metadata": VALID_METADATA,
-    "spec": {"name": "test-consumer", "plugins_list": ["https://s3/plugin-a.jar"], "size": "medium"},
+    "spec": {
+        "name": "test-consumer",
+        "plugins_list": ["https://s3/plugin-a.jar"],
+        "size": "medium",
+    },
 }
 
 CONSUMER_UPDATE_PAYLOAD = {
@@ -238,7 +268,9 @@ def test_create_consumer_returns_200(client, mock_git):
     assert response.json()["status"] == "successful"
 
 
-def test_create_consumer_calls_add_file_with_expected_path_and_content(client, mock_git):
+def test_create_consumer_calls_add_file_with_expected_path_and_content(
+    client, mock_git
+):
     client.post(f"{PREFIX}/consumer/", json=CONSUMER_PAYLOAD)
     assert mock_git.add_file.call_count == 1
     path, message, content = mock_git.add_file.call_args.args
@@ -268,12 +300,16 @@ def test_create_consumer_invalid_name_returns_422(client):
 
 
 def test_update_consumer_returns_200(client, mock_git):
-    response = client.put(f"{PREFIX}/consumer/test-consumer", json=CONSUMER_UPDATE_PAYLOAD)
+    response = client.put(
+        f"{PREFIX}/consumer/test-consumer", json=CONSUMER_UPDATE_PAYLOAD
+    )
     assert response.status_code == 200
     assert response.json()["status"] == "successful"
 
 
-def test_update_consumer_calls_modify_file_with_expected_path_and_content(client, mock_git):
+def test_update_consumer_calls_modify_file_with_expected_path_and_content(
+    client, mock_git
+):
     client.put(f"{PREFIX}/consumer/test-consumer", json=CONSUMER_UPDATE_PAYLOAD)
     assert mock_git.modify_file.call_count == 1
     path, message, content = mock_git.modify_file.call_args.args

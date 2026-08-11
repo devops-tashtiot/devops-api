@@ -1,16 +1,17 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
-from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class DevopsStaticSettings(BaseSettings):
-    
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
-#======================================================artifactory=============================================    
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+    # ======================================================artifactory=============================================
     ARTIFACTORY_ENABLE_API: bool = Field(
         description="enable or disable artifactory api",
         default=True,
     )
-    
+
     ARTIFACTORY_PASSWORD: str = Field(
         description="ARTIFACTORY username's password",
         default="sheker",
@@ -25,7 +26,7 @@ class DevopsStaticSettings(BaseSettings):
         default="ldap-ad",
         description="Name of the LDAP setting configured in JFrog Platform (Admin > Security > LDAP)",
     )
-    
+
     ARTIFACTORY_API_URL: str = Field(
         description="ARTIFACTORY api url",
         default="https://private-artifactory.org",
@@ -35,7 +36,7 @@ class DevopsStaticSettings(BaseSettings):
         description="Base URL to the xray-vulnerability-updates subfolder inside the platform-devops-team bucket (no trailing slash)",
     )
 
-#======================================================bitbucket=============================================    
+    # ======================================================bitbucket=============================================
 
     BITBUCKET_ENABLE_API: bool = Field(
         description="enable or disable bitbucket api",
@@ -57,7 +58,7 @@ class DevopsStaticSettings(BaseSettings):
         default="svc-lcl-bb-api",
     )
 
-#======================================================confluence=============================================    
+    # ======================================================confluence=============================================
 
     CONFLUENCE_ENABLE_API: bool = Field(
         description="enable or disable confluence api",
@@ -86,8 +87,7 @@ class DevopsStaticSettings(BaseSettings):
         default="http://localhost:9100/platform-clients/confluence-space-imports",
         description="Base URL to the confluence-space-imports subfolder inside the public platform-clients bucket (no trailing slash)",
     )
-#======================================================jira=============================================    
-
+    # ======================================================jira=============================================
 
     JIRA_ENABLE_API: bool = Field(
         description="enable or disable jira api",
@@ -109,7 +109,7 @@ class DevopsStaticSettings(BaseSettings):
         default="sheker",
     )
 
-#======================================================sonarqube=============================================    
+    # ======================================================sonarqube=============================================
 
     SONARQUBE_ENABLE_API: bool = Field(
         description="enable or disable sonarqube api",
@@ -135,14 +135,14 @@ class DevopsStaticSettings(BaseSettings):
         description="Bitbucket repo slug for the SonarQube GitOps consumer configs",
     )
 
-#======================================================argocd=============================================    
+    # ======================================================argocd=============================================
 
     ARGOCD_ENABLE_API: bool = Field(
         description="enable or disable argocd consumer config api",
         default=True,
     )
 
-# from argocd repo url the networks there
+    # from argocd repo url the networks there
     ARGOCD_ALLOWED_ENVS: list[str] = Field(
         default=["prod", "dr", "int"],
         description="Environments allowed in this network deployment",
@@ -167,8 +167,8 @@ class DevopsStaticSettings(BaseSettings):
         description="Kubernetes resource kinds allowed in include_resources",
     )
 
-#=========================================================gitops-connector=======================================
-# for working against gitops repos
+    # =========================================================gitops-connector=======================================
+    # for working against gitops repos
     GIT_API_URL: str = Field(
         description="Git (Bitbucket) server URL",
         default="https://private-bitbucket.org",
@@ -188,7 +188,7 @@ class DevopsStaticSettings(BaseSettings):
         description="Bitbucket project key containing the target repo",
         default="DEVOPS",
     )
-#should be mounted to the deployment
+    # should be mounted to the deployment
     GIT_SSH_KEY_PATH: str = Field(
         description="Path to the SSH private key used by the Git connector",
         default="/etc/.ssh/private_key",
@@ -199,14 +199,12 @@ class DevopsStaticSettings(BaseSettings):
         default=7999,
     )
 
-#======================================================general=============================================    
+    # ======================================================general=============================================
 
     DOMAIN_SUFFIX: str = Field(
         default="app.iaf",
         description="Shared domain suffix used across services — e.g. ArgoCD: https://{name}-argocd.{DOMAIN_SUFFIX}, SonarQube: https://{consumer}.sonarqube.{DOMAIN_SUFFIX}",
     )
-
-
 
 
 global_config = DevopsStaticSettings()

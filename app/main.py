@@ -1,45 +1,48 @@
-from fastapi import FastAPI
-from .global_conf import global_config
 import uvicorn
+from fastapi import FastAPI
+from tashtiot_apis_library import Git, general_create_app
 from tashtiot_apis_library.fastapi_template.utils import BaseAPI
-from tashtiot_apis_library import general_create_app
 
-from tashtiot_apis_library import Git
-
+from .global_conf import global_config
+from .v1.argocd.conf import config as argocd_config
+from .v1.argocd.routes import get_v1_argocd_router
 from .v1.artifactory.routes import get_v1_artifactory_router
 from .v1.bitbucket.routes import get_v1_bitbucket_router
 from .v1.confluence.routes import get_v1_confluence_router
-from .v1.argocd.routes import get_v1_argocd_router
-from .v1.argocd.conf import config as argocd_config
-from .v1.sonarqube.routes import get_v1_sonarqube_router
-from .v1.sonarqube.conf import config as sonarqube_config
 from .v1.jira.routes import get_v1_jira_router
+from .v1.sonarqube.conf import config as sonarqube_config
+from .v1.sonarqube.routes import get_v1_sonarqube_router
+
+
 def create_app() -> FastAPI:
     # enable_auth wires the library's global AuthMiddleware, which protects every route
     # (except docs/metrics/health/probes) once AUTH_ENABLED=true and one AUTH_* verification
     # material is also set. With AUTH_ENABLED unset/false (the default), the app boots open,
     # same as before this flag existed. See app/v1/auth/CLAUDE.md.
     app = general_create_app(enable_auth=True)
-    
+
     # Configure external services objects
     if global_config.ARTIFACTORY_ENABLE_API:
         artifactory_client = BaseAPI(
             global_config.ARTIFACTORY_API_URL,
-            auth=(global_config.ARTIFACTORY_USERNAME, global_config.ARTIFACTORY_PASSWORD)
+            auth=(
+                global_config.ARTIFACTORY_USERNAME,
+                global_config.ARTIFACTORY_PASSWORD,
+            ),
         ).client
         app.include_router(get_v1_artifactory_router(artifactory_client))
-        
+
     if global_config.BITBUCKET_ENABLE_API:
         bitbucket_client = BaseAPI(
             global_config.BITBUCKET_API_URL,
-            auth=(global_config.BITBUCKET_USERNAME, global_config.BITBUCKET_PASSWORD)
+            auth=(global_config.BITBUCKET_USERNAME, global_config.BITBUCKET_PASSWORD),
         ).client
         app.include_router(get_v1_bitbucket_router(bitbucket_client))
 
     if global_config.CONFLUENCE_ENABLE_API:
         confluence_client = BaseAPI(
             global_config.CONFLUENCE_API_URL,
-            auth=(global_config.CONFLUENCE_USERNAME, global_config.CONFLUENCE_PASSWORD)
+            auth=(global_config.CONFLUENCE_USERNAME, global_config.CONFLUENCE_PASSWORD),
         ).client
         app.include_router(get_v1_confluence_router(confluence_client))
 
@@ -59,7 +62,7 @@ def create_app() -> FastAPI:
     if global_config.JIRA_ENABLE_API:
         jira_client = BaseAPI(
             global_config.JIRA_API_URL,
-            auth=(global_config.JIRA_USERNAME, global_config.JIRA_PASSWORD)
+            auth=(global_config.JIRA_USERNAME, global_config.JIRA_PASSWORD),
         ).client
         app.include_router(get_v1_jira_router(jira_client))
 
@@ -74,12 +77,15 @@ def create_app() -> FastAPI:
             ssh_key_file_path=global_config.GIT_SSH_KEY_PATH,
             ssh_port=global_config.GIT_SSH_PORT,
         )
-        app.include_router(get_v1_argocd_router(
-            git,
-            argocd_timeout=argocd_config.ARGOCD_APPLICATION_SET_TIMEOUT,
-        ))
+        app.include_router(
+            get_v1_argocd_router(
+                git,
+                argocd_timeout=argocd_config.ARGOCD_APPLICATION_SET_TIMEOUT,
+            )
+        )
 
     return app
+
 
 if __name__ == "__main__":
     app = create_app()

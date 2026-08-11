@@ -43,17 +43,6 @@ Deletes a Jira project by key.
 
 ---
 
-### `GET /user-dirs`
-
-Returns all user directories configured in Jira (including AD/LDAP directories). Requires
-the calling account to have Jira **System Administrator** permission, not just regular
-Administrator.
-
-**Response** — JSON array (unwrapped from Jira's `{"directories": [...]}`) from
-`/rest/crowd/latest/directory`.
-
----
-
 ### `POST /user-dirs/sync`
 
 Always returns `501` — Jira has no supported API to trigger a user directory sync on demand

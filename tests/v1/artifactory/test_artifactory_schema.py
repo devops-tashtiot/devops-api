@@ -1,24 +1,38 @@
 import pytest
 from pydantic import ValidationError
 
-from app.v1.artifactory.schemas import ProjectSpec, StorageQuotaBytes, ProjectPermissionSpec, MemberType
-
+from app.v1.artifactory.schemas import (
+    MemberType,
+    ProjectPermissionSpec,
+    ProjectSpec,
+    StorageQuotaBytes,
+)
 
 # ── ProjectSpec ───────────────────────────────────────────────────────────────
 
+
 def test_project_spec_valid_with_admin_user():
-    spec = ProjectSpec(name="my project", storage_quota_giga_bytes=2, admin_user="alice")
+    spec = ProjectSpec(
+        name="my project", storage_quota_giga_bytes=2, admin_user="alice"
+    )
     assert spec.name == "my project"
     assert spec.admin_user == "alice"
 
 
 def test_project_spec_valid_with_admin_group():
-    spec = ProjectSpec(name="my-project", storage_quota_giga_bytes=1, admin_group="devops-team")
+    spec = ProjectSpec(
+        name="my-project", storage_quota_giga_bytes=1, admin_group="devops-team"
+    )
     assert spec.admin_group == "devops-team"
 
 
 def test_project_spec_valid_with_both_admin_user_and_group():
-    spec = ProjectSpec(name="my-project", storage_quota_giga_bytes=1, admin_user="alice", admin_group="devops-team")
+    spec = ProjectSpec(
+        name="my-project",
+        storage_quota_giga_bytes=1,
+        admin_user="alice",
+        admin_group="devops-team",
+    )
     assert spec.admin_user == "alice"
     assert spec.admin_group == "devops-team"
 
@@ -49,16 +63,21 @@ def test_project_spec_quota_too_high_raises():
 
 
 def test_project_key_derived_from_name():
-    spec = ProjectSpec(name="My Project", storage_quota_giga_bytes=1, admin_user="alice")
+    spec = ProjectSpec(
+        name="My Project", storage_quota_giga_bytes=1, admin_user="alice"
+    )
     assert spec.project_key == "my-project"
 
 
 def test_project_key_underscores_replaced():
-    spec = ProjectSpec(name="my_project", storage_quota_giga_bytes=1, admin_user="alice")
+    spec = ProjectSpec(
+        name="my_project", storage_quota_giga_bytes=1, admin_user="alice"
+    )
     assert spec.project_key == "my-project"
 
 
 # ── StorageQuotaBytes ─────────────────────────────────────────────────────────
+
 
 def test_storage_quota_valid():
     spec = StorageQuotaBytes(name="my-project", storage_quota_giga_bytes=5)
@@ -76,6 +95,7 @@ def test_storage_quota_too_high_raises():
 
 
 # ── ProjectPermissionSpec ─────────────────────────────────────────────────────
+
 
 def test_permission_spec_valid_user():
     spec = ProjectPermissionSpec(

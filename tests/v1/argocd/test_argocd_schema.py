@@ -1,6 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
+from app.global_conf import global_config
 from app.v1.argocd.schemas import (
     ApplicationCluster,
     ClusterSecretIdentifier,
@@ -9,8 +10,6 @@ from app.v1.argocd.schemas import (
     ConsumerConfigSpec,
     ConsumerExtraConfig,
 )
-from app.v1.argocd.conf import config
-from app.global_conf import global_config
 
 VALID_ENV = global_config.ARGOCD_ALLOWED_ENVS[0]
 VALID_SIZE = global_config.ARGOCD_ALLOWED_SIZES[0]
@@ -37,42 +36,82 @@ class TestConsumerConfigSpec:
 
     def test_empty_name_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="", environment=VALID_ENV, size=VALID_SIZE,
-                               include_resources=[VALID_RESOURCE], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
 
     def test_name_with_spaces_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="bad name", environment=VALID_ENV, size=VALID_SIZE,
-                               include_resources=[VALID_RESOURCE], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="bad name",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
 
     def test_name_with_special_chars_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="bad!name", environment=VALID_ENV, size=VALID_SIZE,
-                               include_resources=[VALID_RESOURCE], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="bad!name",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
 
     def test_invalid_environment_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="c", environment="nonexistent", size=VALID_SIZE,
-                               include_resources=[VALID_RESOURCE], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="c",
+                environment="nonexistent",
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
 
     def test_invalid_size_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="c", environment=VALID_ENV, size="supersize",
-                               include_resources=[VALID_RESOURCE], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="c",
+                environment=VALID_ENV,
+                size="supersize",
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
 
     def test_empty_include_resources_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="c", environment=VALID_ENV, size=VALID_SIZE,
-                               include_resources=[], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="c",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[],
+                ad_admin_group="g",
+            )
 
     def test_invalid_include_resource_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerConfigSpec(name="c", environment=VALID_ENV, size=VALID_SIZE,
-                               include_resources=["Pod"], ad_admin_group="g")
+            ConsumerConfigSpec(
+                name="c",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=["Pod"],
+                ad_admin_group="g",
+            )
 
     def test_name_with_hyphens_and_underscores_valid(self):
-        spec = ConsumerConfigSpec(name="my_consumer-1", environment=VALID_ENV, size=VALID_SIZE,
-                                  include_resources=[VALID_RESOURCE], ad_admin_group="g")
+        spec = ConsumerConfigSpec(
+            name="my_consumer-1",
+            environment=VALID_ENV,
+            size=VALID_SIZE,
+            include_resources=[VALID_RESOURCE],
+            ad_admin_group="g",
+        )
         assert spec.name == "my_consumer-1"
 
 
@@ -82,12 +121,16 @@ class TestApplicationCluster:
         assert c.name == "openshift"
 
     def test_name_defaults_to_openshift(self):
-        c = ApplicationCluster(namespace="default", address="https://127.0.0.1:6443", token="tok")
+        c = ApplicationCluster(
+            namespace="default", address="https://127.0.0.1:6443", token="tok"
+        )
         assert c.name == "openshift"
 
     def test_empty_namespace_raises(self):
         with pytest.raises(ValidationError):
-            ApplicationCluster(namespace="", address="https://127.0.0.1:6443", token="tok")
+            ApplicationCluster(
+                namespace="", address="https://127.0.0.1:6443", token="tok"
+            )
 
     def test_empty_address_raises(self):
         with pytest.raises(ValidationError):
@@ -95,10 +138,14 @@ class TestApplicationCluster:
 
     def test_empty_token_raises(self):
         with pytest.raises(ValidationError):
-            ApplicationCluster(namespace="default", address="https://127.0.0.1:6443", token="")
+            ApplicationCluster(
+                namespace="default", address="https://127.0.0.1:6443", token=""
+            )
 
     def test_comma_separated_namespaces_valid(self):
-        c = ApplicationCluster(namespace="ns1,ns2,ns3", address="https://127.0.0.1:6443", token="tok")
+        c = ApplicationCluster(
+            namespace="ns1,ns2,ns3", address="https://127.0.0.1:6443", token="tok"
+        )
         assert c.namespace == "ns1,ns2,ns3"
 
 
@@ -127,7 +174,12 @@ class TestClusterSecretSpec:
             ClusterSecretSpec(**{**self._base(), "app_name": "bad name!"})
 
     def test_multiple_clusters_valid(self):
-        spec = ClusterSecretSpec(**{**self._base(), "application_clusters": [VALID_CLUSTER_DATA, VALID_CLUSTER_DATA]})
+        spec = ClusterSecretSpec(
+            **{
+                **self._base(),
+                "application_clusters": [VALID_CLUSTER_DATA, VALID_CLUSTER_DATA],
+            }
+        )
         assert len(spec.application_clusters) == 2
 
 
@@ -172,17 +224,23 @@ class TestConsumerExtraConfig:
         assert cfg.extra_argocd_cm_args == {}
 
     def test_valid_cm_namespace(self):
-        cfg = ConsumerExtraConfig(extra_argocd_cm_args={"server.rbac.log.enforce.enable": "true"})
+        cfg = ConsumerExtraConfig(
+            extra_argocd_cm_args={"server.rbac.log.enforce.enable": "true"}
+        )
         assert cfg.extra_argocd_cm_args["server.rbac.log.enforce.enable"] == "true"
 
     def test_unknown_cm_prefix_accepted(self):
         # No namespace whitelist — deliberately not hardcoded (see app/v1/argocd/CLAUDE.md),
         # so an arbitrary/unrecognized-looking prefix is accepted, not rejected.
-        cfg = ConsumerExtraConfig(extra_argocd_cm_args={"totallyMadeUp.setting": "true"})
+        cfg = ConsumerExtraConfig(
+            extra_argocd_cm_args={"totallyMadeUp.setting": "true"}
+        )
         assert cfg.extra_argocd_cm_args["totallyMadeUp.setting"] == "true"
 
     def test_valid_params_namespace(self):
-        cfg = ConsumerExtraConfig(extra_argocd_params={"controller.status.processors": "10"})
+        cfg = ConsumerExtraConfig(
+            extra_argocd_params={"controller.status.processors": "10"}
+        )
         assert cfg.extra_argocd_params["controller.status.processors"] == "10"
 
     def test_unknown_params_prefix_accepted(self):
@@ -190,12 +248,16 @@ class TestConsumerExtraConfig:
         assert cfg.extra_argocd_params["totallyMadeUp.setting"] == "10"
 
     def test_valid_multiline_yaml_value(self):
-        cfg = ConsumerExtraConfig(extra_argocd_cm_args={"resource.customizations": "foo: bar\nbaz: qux"})
+        cfg = ConsumerExtraConfig(
+            extra_argocd_cm_args={"resource.customizations": "foo: bar\nbaz: qux"}
+        )
         assert "foo: bar" in cfg.extra_argocd_cm_args["resource.customizations"]
 
     def test_invalid_multiline_yaml_value_raises(self):
         with pytest.raises(ValidationError):
-            ConsumerExtraConfig(extra_argocd_cm_args={"resource.customizations": "foo: [bar\nbaz"})
+            ConsumerExtraConfig(
+                extra_argocd_cm_args={"resource.customizations": "foo: [bar\nbaz"}
+            )
 
     def test_list_to_dict_coercion(self):
         cfg = ConsumerExtraConfig(
@@ -205,6 +267,9 @@ class TestConsumerExtraConfig:
 
     def test_list_to_dict_coercion_skips_entries_without_key(self):
         cfg = ConsumerExtraConfig(
-            extra_argocd_cm_args=[{"key": "server.insecure", "value": "true"}, {"value": "ignored"}]
+            extra_argocd_cm_args=[
+                {"key": "server.insecure", "value": "true"},
+                {"value": "ignored"},
+            ]
         )
         assert cfg.extra_argocd_cm_args == {"server.insecure": "true"}

@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field, field_validator, model_validator
-from typing import Optional
 from tashtiot_apis_library import OperationRequest
 
 
@@ -26,7 +25,7 @@ class SpaceSpec(BaseModel):
         max_length=1000,
     )
 
-    admin_user: Optional[str] = Field(
+    admin_user: str | None = Field(
         default=None,
         description="Username to receive ADMIN permission on the space",
         min_length=1,
@@ -34,7 +33,7 @@ class SpaceSpec(BaseModel):
         pattern=r"^[a-z0-9_\-]+$",
     )
 
-    admin_group: Optional[str] = Field(
+    admin_group: str | None = Field(
         default=None,
         description="Group name to receive ADMIN permission on the space",
         min_length=1,

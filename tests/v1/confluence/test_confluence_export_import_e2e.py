@@ -21,6 +21,7 @@ Note: plugin install requires Confluence's UPM upload to be enabled
 (-Dupm.plugin.upload.enabled=true, see devtools-definition/devtools/confluence/values.yaml)
 — it's disabled by default in Confluence Data Center and 403s otherwise.
 """
+
 import base64
 import io
 import os
@@ -85,7 +86,9 @@ def _build_minimal_plugin_jar() -> bytes:
 
 @pytest.fixture(scope="module")
 def confluence():
-    return httpx.Client(base_url=CONFLUENCE_URL, auth=(CONFLUENCE_USER, CONFLUENCE_PASS), timeout=30)
+    return httpx.Client(
+        base_url=CONFLUENCE_URL, auth=(CONFLUENCE_USER, CONFLUENCE_PASS), timeout=30
+    )
 
 
 @pytest.fixture(scope="module")
@@ -108,7 +111,7 @@ def _wait_for_confluence(confluence: httpx.Client):
 def _wait_for_api(api: httpx.Client):
     for _ in range(10):
         try:
-            r = api.get(f"{API_PREFIX}/user-dirs")
+            r = api.get("/openapi.json")
             if r.status_code < 500:
                 return
         except Exception:
@@ -160,15 +163,18 @@ def test_create_and_delete_space(confluence, api):
     _ensure_user(confluence, ADMIN_USER)
     _delete_space_if_exists(confluence, SPACE_KEY)
 
-    r = api.post(f"{API_PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": SPACE_KEY,
-            "name": SPACE_NAME,
-            "description": "E2E create/delete test space",
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{API_PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": SPACE_KEY,
+                "name": SPACE_NAME,
+                "description": "E2E create/delete test space",
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, f"Space creation failed: {r.text}"
     assert r.json()["status"] == "successful"
 
@@ -179,7 +185,8 @@ def test_create_and_delete_space(confluence, api):
     admin_ops = {
         p["operation"]["operationKey"]
         for p in r.json()
-        if p["subject"].get("type") == "user" and p["operation"]["operationKey"] == "administer"
+        if p["subject"].get("type") == "user"
+        and p["operation"]["operationKey"] == "administer"
     }
     assert "administer" in admin_ops, "admin_user was not granted administer permission"
 
@@ -191,35 +198,9 @@ def test_create_and_delete_space(confluence, api):
     assert r.json()["status"] == "successful"
 
     r = confluence.get(f"/rest/api/latest/space/{SPACE_KEY}")
-    assert r.status_code == 404, "Space still exists immediately after a \"successful\" delete"
-
-
-@pytest.mark.integration
-def test_list_user_directories(confluence, api):
-    _wait_for_confluence(confluence)
-    _wait_for_api(api)
-
-    r = api.get(f"{API_PREFIX}/user-dirs")
-    assert r.status_code == 200, r.text
-    directories = r.json()
-    assert isinstance(directories, list)
-    assert len(directories) > 0
-
-    direct = confluence.get("/rest/crowd/latest/directory", headers={"Accept": "application/json"})
-    assert direct.status_code == 200
-    assert {d["name"] for d in directories} == {d["name"] for d in direct.json()["directory"]}
-
-
-@pytest.mark.integration
-def test_sync_user_directory_returns_not_supported(api):
-    # Confluence has no supported REST API to trigger a directory sync on demand — confirmed
-    # live: POST /rest/crowd/latest/directory/{id}/synchronise 404s even with a correct
-    # connector directory ID (see app/v1/bitbucket/CLAUDE.md for the shared investigation with
-    # Bitbucket, same root cause). Must return 501, never a false "successful".
-    _wait_for_api(api)
-    r = api.post(f"{API_PREFIX}/user-dirs/sync")
-    assert r.status_code == 501, r.text
-    assert r.json()["status"] == "Failed"
+    assert r.status_code == 404, (
+        'Space still exists immediately after a "successful" delete'
+    )
 
 
 @pytest.mark.integration
@@ -232,26 +213,34 @@ def test_plugin_upload_install_uninstall_flow(confluence, api):
     file_content = base64.b64encode(jar_bytes).decode()
 
     # --- step 1: upload the jar to MinIO via our API ---
-    r = api.post(f"{API_PREFIX}/plugin/upload", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {"plugin_name": PLUGIN_NAME, "file_content": file_content},
-    })
+    r = api.post(
+        f"{API_PREFIX}/plugin/upload",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {"plugin_name": PLUGIN_NAME, "file_content": file_content},
+        },
+    )
     assert r.status_code == 200, f"Plugin upload failed: {r.text}"
     assert r.json()["status"] == "successful"
 
     # --- step 2: verify it's actually in MinIO ---
-    r = httpx.get(f"{MINIO_URL}/platform-clients/confluence-plugins/{PLUGIN_NAME}", timeout=10)
+    r = httpx.get(
+        f"{MINIO_URL}/platform-clients/confluence-plugins/{PLUGIN_NAME}", timeout=10
+    )
     assert r.status_code == 200, f"Plugin jar not found in MinIO: {PLUGIN_NAME}"
     assert r.content == jar_bytes
 
     # --- step 3: install it into Confluence via our API ---
-    r = api.post(f"{API_PREFIX}/plugin/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {"plugin_name": PLUGIN_NAME},
-    })
+    r = api.post(
+        f"{API_PREFIX}/plugin/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {"plugin_name": PLUGIN_NAME},
+        },
+    )
     assert r.status_code == 200, (
         f"Plugin install failed: {r.text}. If this 403s with "
-        "\"Plugins cannot be installed via upload\", Confluence's UPM upload is disabled — "
+        '"Plugins cannot be installed via upload", Confluence\'s UPM upload is disabled — '
         "see -Dupm.plugin.upload.enabled=true in devtools-definition/devtools/confluence/values.yaml."
     )
     assert r.json()["status"] == "successful"
@@ -269,7 +258,7 @@ def test_plugin_upload_install_uninstall_flow(confluence, api):
 
     # --- step 6: verify it's actually gone ---
     r = confluence.get(f"/rest/plugins/1.0/{PLUGIN_KEY}-key")
-    assert r.status_code == 404, "Plugin still installed after a \"successful\" uninstall"
+    assert r.status_code == 404, 'Plugin still installed after a "successful" uninstall'
 
 
 @pytest.mark.integration
@@ -282,25 +271,36 @@ def test_export_import_full_flow(confluence, api):
     _ensure_user(confluence, ADMIN_USER)
 
     # --- step 1: create space via our API ---
-    r = api.post(f"{API_PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": SPACE_KEY,
-            "name": SPACE_NAME,
-            "description": "E2E export/import test space",
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{API_PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": SPACE_KEY,
+                "name": SPACE_NAME,
+                "description": "E2E export/import test space",
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, f"Space creation failed: {r.text}"
     assert r.json()["status"] == "successful"
 
     # --- step 2: create a page in the space ---
-    r = confluence.post("/rest/api/latest/content", json={
-        "type": "page",
-        "title": "E2E Test Page",
-        "space": {"key": SPACE_KEY},
-        "body": {"storage": {"value": "<p>Integration test content</p>", "representation": "storage"}},
-    })
+    r = confluence.post(
+        "/rest/api/latest/content",
+        json={
+            "type": "page",
+            "title": "E2E Test Page",
+            "space": {"key": SPACE_KEY},
+            "body": {
+                "storage": {
+                    "value": "<p>Integration test content</p>",
+                    "representation": "storage",
+                }
+            },
+        },
+    )
     assert r.status_code == 200, f"Page creation failed: {r.text}"
     page_id = r.json()["id"]
 
@@ -316,17 +316,23 @@ def test_export_import_full_flow(confluence, api):
 
     # --- step 4: export the space via our API — relays Confluence's backup archive into
     # MinIO through devops-api's own memory (Confluence never talks to MinIO directly) ---
-    r = api.post(f"{API_PREFIX}/space-export/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {"space_key": SPACE_KEY},
-    })
+    r = api.post(
+        f"{API_PREFIX}/space-export/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {"space_key": SPACE_KEY},
+        },
+    )
     assert r.status_code == 200, f"Space export failed: {r.text}"
     assert r.json()["status"] == "successful"
     archive_name = r.json()["archive_name"]
     assert archive_name.endswith(".zip"), f"Unexpected archive_name: {archive_name}"
 
     # --- step 5: verify the archive is actually in MinIO ---
-    r = httpx.get(f"{MINIO_URL}/platform-clients/confluence-space-imports/{archive_name}", timeout=10)
+    r = httpx.get(
+        f"{MINIO_URL}/platform-clients/confluence-space-imports/{archive_name}",
+        timeout=10,
+    )
     assert r.status_code == 200, f"Archive not found in MinIO: {archive_name}"
     assert len(r.content) > 0
 
@@ -338,10 +344,13 @@ def test_export_import_full_flow(confluence, api):
     # --- step 7: import the space via our API. Note: archive_name is the ONLY field in
     # SpaceImportSpec — Confluence restores the space key from the archive itself, there is
     # no way to override it (see app/v1/confluence/CLAUDE.md). ---
-    r = api.post(f"{API_PREFIX}/space-import/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {"archive_name": archive_name},
-    })
+    r = api.post(
+        f"{API_PREFIX}/space-import/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {"archive_name": archive_name},
+        },
+    )
     assert r.status_code == 200, f"Space import failed: {r.text}"
     assert r.json()["status"] == "successful"
 
@@ -359,7 +368,9 @@ def test_export_import_full_flow(confluence, api):
     page_id_restored = next(p["id"] for p in pages if p["title"] == "E2E Test Page")
     r = confluence.get(f"/rest/api/latest/content/{page_id_restored}/child/attachment")
     attachments = r.json()["results"]
-    assert any(a["title"] == ATTACHMENT_NAME for a in attachments), "Attachment not restored"
+    assert any(a["title"] == ATTACHMENT_NAME for a in attachments), (
+        "Attachment not restored"
+    )
 
     # --- cleanup ---
     _delete_space_if_exists(confluence, SPACE_KEY)

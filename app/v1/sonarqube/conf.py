@@ -1,10 +1,11 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class SonarqubeConfig(BaseSettings):
-
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
 
     API_PREFIX: str = Field(
         default="/api/v1/devops/sonarqube",
@@ -32,10 +33,16 @@ class SonarqubeConfig(BaseSettings):
     )
 
     SONARQUBE_TEMPLATE_PERMISSIONS: list[str] = Field(
-        default=["user", "codeviewer", "issueadmin", "securityhotspotadmin", "admin", "scan"],
+        default=[
+            "user",
+            "codeviewer",
+            "issueadmin",
+            "securityhotspotadmin",
+            "admin",
+            "scan",
+        ],
         description="Per-project template permissions granted to new admin groups",
     )
-
 
     SONARQUBE_GITOPS_DEFAULT_BRANCH: str = Field(
         default="master",

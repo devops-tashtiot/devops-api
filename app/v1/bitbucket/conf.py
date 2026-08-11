@@ -1,8 +1,8 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
+
 
 class BitbucketConfig(BaseSettings):
-    
     API_PREFIX: str = Field(
         default="/api/v1/devops/bitbucket",
         description="API prefix for api exposure",
@@ -19,5 +19,6 @@ class BitbucketConfig(BaseSettings):
         default="/rest/crowd/latest",
         description="Crowd REST API base path — used for user directory listing and sync",
     )
+
 
 config = BitbucketConfig()

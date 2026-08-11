@@ -48,7 +48,9 @@ REQUEST_METADATA = {
 
 @pytest.fixture(scope="module")
 def bb():
-    with httpx.Client(base_url=BITBUCKET_URL, auth=(BITBUCKET_USER, BITBUCKET_PASS), timeout=30.0) as client:
+    with httpx.Client(
+        base_url=BITBUCKET_URL, auth=(BITBUCKET_USER, BITBUCKET_PASS), timeout=30.0
+    ) as client:
         yield client
 
 
@@ -89,7 +91,9 @@ def _project_exists(bb: httpx.Client, key: str) -> bool:
     return bb.get(f"/rest/api/latest/projects/{key}").status_code == 200
 
 
-def _get_project_user_permission(bb: httpx.Client, key: str, username: str) -> str | None:
+def _get_project_user_permission(
+    bb: httpx.Client, key: str, username: str
+) -> str | None:
     r = bb.get(f"/rest/api/latest/projects/{key}/permissions/users")
     assert r.status_code == 200
     for entry in r.json().get("values", []):
@@ -98,7 +102,9 @@ def _get_project_user_permission(bb: httpx.Client, key: str, username: str) -> s
     return None
 
 
-def _get_project_group_permission(bb: httpx.Client, key: str, group_name: str) -> str | None:
+def _get_project_group_permission(
+    bb: httpx.Client, key: str, group_name: str
+) -> str | None:
     r = bb.get(f"/rest/api/latest/projects/{key}/permissions/groups")
     assert r.status_code == 200
     for entry in r.json().get("values", []):
@@ -108,7 +114,9 @@ def _get_project_group_permission(bb: httpx.Client, key: str, group_name: str) -
 
 
 def _repo_exists(bb: httpx.Client, key: str, repo_slug: str) -> bool:
-    return bb.get(f"/rest/api/latest/projects/{key}/repos/{repo_slug}").status_code == 200
+    return (
+        bb.get(f"/rest/api/latest/projects/{key}/repos/{repo_slug}").status_code == 200
+    )
 
 
 @pytest.mark.integration
@@ -116,16 +124,19 @@ def test_create_assign_and_delete_project(bb, api, clean_project):
     assert not _project_exists(bb, PROJECT_KEY)
 
     # --- create project via our API ---
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project",
-            "public": False,
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project",
+                "public": False,
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
 
@@ -150,16 +161,19 @@ def test_create_assign_group_and_delete_project(bb, api, clean_project):
     assert not _project_exists(bb, PROJECT_KEY)
 
     # --- create project via our API with admin_group instead of admin_user ---
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project (group admin)",
-            "public": False,
-            "admin_group": ADMIN_GROUP,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project (group admin)",
+                "public": False,
+                "admin_group": ADMIN_GROUP,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
 
@@ -183,16 +197,19 @@ def test_create_project_with_nonexistent_admin_user_returns_404(bb, api, clean_p
     # just aspirational.
     assert not _project_exists(bb, PROJECT_KEY)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project (nonexistent admin_user)",
-            "public": False,
-            "admin_user": "nonexistentusr",
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project (nonexistent admin_user)",
+                "public": False,
+                "admin_user": "nonexistentusr",
+            },
         },
-    })
+    )
     assert r.status_code == 404, r.text
     assert r.json()["status"] == "Failed"
 
@@ -201,19 +218,24 @@ def test_create_project_with_nonexistent_admin_user_returns_404(bb, api, clean_p
 
 
 @pytest.mark.integration
-def test_create_project_with_nonexistent_admin_group_returns_404(bb, api, clean_project):
+def test_create_project_with_nonexistent_admin_group_returns_404(
+    bb, api, clean_project
+):
     assert not _project_exists(bb, PROJECT_KEY)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project (nonexistent admin_group)",
-            "public": False,
-            "admin_group": "nonexistent-group-999",
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project (nonexistent admin_group)",
+                "public": False,
+                "admin_group": "nonexistent-group-999",
+            },
         },
-    })
+    )
     assert r.status_code == 404, r.text
     assert r.json()["status"] == "Failed"
 
@@ -227,16 +249,19 @@ def test_create_project_with_public_true_creates_public_project(bb, api, clean_p
     # Confirm live that a caller-supplied public:true really flips visibility in real Bitbucket.
     assert not _project_exists(bb, PROJECT_KEY)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project (public)",
-            "public": True,
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project (public)",
+                "public": True,
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
 
@@ -256,16 +281,19 @@ def test_reassigning_admin_permission_is_idempotent(bb, api, clean_project):
     # rollback + retry could re-attempt this).
     assert not _project_exists(bb, PROJECT_KEY)
 
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": PROJECT_KEY,
-            "name": PROJECT_NAME,
-            "description": "End-to-end test project (idempotent permission re-assign)",
-            "public": False,
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": PROJECT_KEY,
+                "name": PROJECT_NAME,
+                "description": "End-to-end test project (idempotent permission re-assign)",
+                "public": False,
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
 
     # re-assign the same permission directly against Bitbucket — must not error
@@ -290,22 +318,28 @@ def test_delete_project_cascades_repo_deletion(bb, api, clean_repo_project):
     assert not _project_exists(bb, REPO_PROJECT_KEY)
 
     # --- create project via our API ---
-    r = api.post(f"{PREFIX}/", json={
-        "metadata": REQUEST_METADATA,
-        "spec": {
-            "key": REPO_PROJECT_KEY,
-            "name": REPO_PROJECT_KEY.lower(),
-            "description": "End-to-end test project with a repo",
-            "public": False,
-            "admin_user": ADMIN_USER,
+    r = api.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": REQUEST_METADATA,
+            "spec": {
+                "key": REPO_PROJECT_KEY,
+                "name": REPO_PROJECT_KEY.lower(),
+                "description": "End-to-end test project with a repo",
+                "public": False,
+                "admin_user": ADMIN_USER,
+            },
         },
-    })
+    )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "successful"
 
     # --- create a repo inside it directly against Bitbucket (devops-api has no repo-create
     #     route — repos here stand in for ones created by other means, e.g. Bitbucket's own UI) ---
-    r = bb.post(f"/rest/api/latest/projects/{REPO_PROJECT_KEY}/repos", json={"name": REPO_SLUG, "scmId": "git"})
+    r = bb.post(
+        f"/rest/api/latest/projects/{REPO_PROJECT_KEY}/repos",
+        json={"name": REPO_SLUG, "scmId": "git"},
+    )
     assert r.status_code == 201, r.text
     assert _repo_exists(bb, REPO_PROJECT_KEY, REPO_SLUG)
 
@@ -317,23 +351,6 @@ def test_delete_project_cascades_repo_deletion(bb, api, clean_repo_project):
     # --- verify both the repo and the project are actually gone ---
     assert not _repo_exists(bb, REPO_PROJECT_KEY, REPO_SLUG)
     assert not _project_exists(bb, REPO_PROJECT_KEY)
-
-
-@pytest.mark.integration
-def test_list_user_directories(bb, api):
-    # --- list via our API ---
-    r = api.get(f"{PREFIX}/user-dirs")
-    assert r.status_code == 200, r.text
-    directories = r.json()
-    assert isinstance(directories, list)
-    assert len(directories) > 0, "Bitbucket has no configured user directories"
-
-    # --- cross-check against Bitbucket directly (same Crowd-embedded resource) ---
-    direct = bb.get("/rest/crowd/latest/directory", headers={"Accept": "application/json"})
-    assert direct.status_code == 200, direct.text
-    direct_names = {d["name"] for d in direct.json()["directory"]}
-    api_names = {d["name"] for d in directories}
-    assert api_names == direct_names
 
 
 @pytest.mark.integration

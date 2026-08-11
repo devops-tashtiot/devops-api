@@ -25,8 +25,21 @@ REQUEST_METADATA = {
     "environment": "test",
 }
 
-EXPECTED_GLOBAL_PERMISSIONS = {"admin", "gateadmin", "profileadmin", "provisioning", "scan"}
-EXPECTED_TEMPLATE_PERMISSIONS = {"user", "codeviewer", "issueadmin", "securityhotspotadmin", "admin", "scan"}
+EXPECTED_GLOBAL_PERMISSIONS = {
+    "admin",
+    "gateadmin",
+    "profileadmin",
+    "provisioning",
+    "scan",
+}
+EXPECTED_TEMPLATE_PERMISSIONS = {
+    "user",
+    "codeviewer",
+    "issueadmin",
+    "securityhotspotadmin",
+    "admin",
+    "scan",
+}
 
 
 @pytest.fixture(scope="module")

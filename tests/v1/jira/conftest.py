@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -12,7 +13,11 @@ def mock_jira_client():
     ok = MagicMock()
     ok.status_code = 200
     ok.text = ""
-    ok.json.return_value = {"id": "10000", "key": "MYPROJ", "self": "http://jira/project/MYPROJ"}
+    ok.json.return_value = {
+        "id": "10000",
+        "key": "MYPROJ",
+        "self": "http://jira/project/MYPROJ",
+    }
 
     client.post = AsyncMock(return_value=ok)
     client.delete = AsyncMock(return_value=ok)
