@@ -241,15 +241,18 @@ SERVICE_URL = os.environ.get("<SERVICE>_URL", "http://localhost:<port>")
 API_URL = os.environ.get("API_URL", "http://localhost:5002")
 PREFIX = "/api/v1/devops/<service>"
 
+
 @pytest.fixture(scope="module")
 def svc():
     with httpx.Client(base_url=SERVICE_URL, auth=(..., ...), timeout=30.0) as client:
         yield client
 
+
 @pytest.fixture(scope="module")
 def api():
     with httpx.Client(base_url=API_URL, timeout=30.0) as client:
         yield client
+
 
 @pytest.fixture
 def clean_resource(svc):
@@ -260,6 +263,7 @@ def clean_resource(svc):
     _delete_if_exists(svc, RESOURCE_KEY)
     yield RESOURCE_KEY
     _delete_if_exists(svc, RESOURCE_KEY)
+
 
 @pytest.mark.integration
 def test_create_and_delete(svc, api, clean_resource):
@@ -602,9 +606,9 @@ if global_config.ENABLE_<SERVICE>_API:
 | Module        | Auth type  | Endpoint base            | Resource  | Operations                              |
 |---------------|------------|--------------------------|-----------|------------------------------------------|
 | `artifactory` | Basic auth | `/access/api/v1`       | project   | increase storage quota                   |
-| `bitbucket`   | Basic auth | `/rest/api/latest`       | project   | create, delete, assign admin; list/sync user dirs |
-| `confluence`  | Basic auth | `/rest/api/latest`       | space     | create, delete, assign user/group admin; plugin install/uninstall; space import; list/sync user dirs |
-| `jira`        | Basic auth | `/rest/api/latest`       | project   | create (`POST /`), delete (`DELETE /{key}`), assign admin; list/sync user dirs |
+| `bitbucket`   | Basic auth | `/rest/api/latest`       | project   | create, delete, assign admin; sync user dirs (501) |
+| `confluence`  | Basic auth | `/rest/api/latest`       | space     | create, delete, assign user/group admin; plugin install/uninstall; space import |
+| `jira`        | Basic auth | `/rest/api/latest`       | project   | create (`POST /`), delete (`DELETE /{key}`), assign admin; sync user dirs (501) |
 | `argocd`      | Git connector | `consumers/` (git path) | consumer config | create (`POST /`), delete (`DELETE /{name}`), get sizes, get include-resources |
 | `sonarqube`   | Basic auth | `/api`                   | group     | create (`POST /`), delete (`DELETE /{name}`), global admin + template admin    |
 
@@ -618,18 +622,23 @@ When a resource can be administered by either a user OR a group (but not both), 
 from pydantic import BaseModel, Field, model_validator
 from typing import Optional
 
+
 class ResourceSpec(BaseModel):
     # ... other fields ...
 
     admin_user: Optional[str] = Field(
         default=None,
         description="Username to receive ADMIN permission",
-        min_length=1, max_length=50, pattern=r"^[a-z0-9_\-]+$",
+        min_length=1,
+        max_length=50,
+        pattern=r"^[a-z0-9_\-]+$",
     )
     admin_group: Optional[str] = Field(
         default=None,
         description="Group name to receive ADMIN permission",
-        min_length=1, max_length=255, pattern=r"^[a-z0-9_\-]+$",
+        min_length=1,
+        max_length=255,
+        pattern=r"^[a-z0-9_\-]+$",
     )
 
     @model_validator(mode="after")

@@ -1,8 +1,8 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
+
 
 class ArtifactoryConfig(BaseSettings):
-
     API_PREFIX: str = Field(
         default="/api/v1/devops/artifactory",
         description="API prefix for api exposure",

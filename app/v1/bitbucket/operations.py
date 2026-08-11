@@ -1,8 +1,11 @@
-from .schemas import ProjectSpec
 from typing import Any
-from .conf import config
-from loguru import logger
+
 from fastapi import HTTPException
+from loguru import logger
+
+from .conf import config
+from .schemas import ProjectSpec
+
 
 def _handle_response(response):
     if response.status_code > 299:
@@ -13,17 +16,21 @@ def _handle_response(response):
             detail = response.text
         raise HTTPException(status_code=response.status_code, detail=detail)
 
+
 async def _assert_user_exists(bitbucket_client: Any, admin_user: str):
     endpoint = f"{config.BITBUCKET_ENDPOINT}/admin/users?filter={admin_user}"
     try:
         response = await bitbucket_client.get(endpoint)
         _handle_response(response)
         if not response.json().get("values"):
-            raise HTTPException(status_code=404, detail=f"User '{admin_user}' does not exist in Bitbucket")
+            raise HTTPException(
+                status_code=404,
+                detail=f"User '{admin_user}' does not exist in Bitbucket",
+            )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error checking user {admin_user} exists: {str(e)}")
+        logger.error(f"Unexpected error checking user {admin_user} exists: {e!s}")
         raise
 
 
@@ -33,11 +40,14 @@ async def _assert_group_exists(bitbucket_client: Any, admin_group: str):
         response = await bitbucket_client.get(endpoint)
         _handle_response(response)
         if not response.json().get("values"):
-            raise HTTPException(status_code=404, detail=f"Group '{admin_group}' does not exist in Bitbucket")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Group '{admin_group}' does not exist in Bitbucket",
+            )
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error checking group {admin_group} exists: {str(e)}")
+        logger.error(f"Unexpected error checking group {admin_group} exists: {e!s}")
         raise
 
 
@@ -49,7 +59,12 @@ async def validate_admin_principals(bitbucket_client: Any, payload: ProjectSpec)
 
 
 async def create_project(bitbucket_client: Any, payload: ProjectSpec):
-    key, name, description, endpoint = payload.key, payload.name, payload.description, f"{config.BITBUCKET_ENDPOINT}/projects"
+    key, name, description, endpoint = (
+        payload.key,
+        payload.name,
+        payload.description,
+        f"{config.BITBUCKET_ENDPOINT}/projects",
+    )
     try:
         body = {
             "key": key,
@@ -60,8 +75,9 @@ async def create_project(bitbucket_client: Any, payload: ProjectSpec):
         response = await bitbucket_client.post(endpoint, json=body)
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error creating project {key}: {str(e)}")
+        logger.error(f"Unexpected error creating project {key}: {e!s}")
         raise
+
 
 async def list_repos(bitbucket_client: Any, key: str) -> list[dict]:
     endpoint = f"{config.BITBUCKET_ENDPOINT}/projects/{key}/repos"
@@ -69,7 +85,9 @@ async def list_repos(bitbucket_client: Any, key: str) -> list[dict]:
     start = 0
     try:
         while True:
-            response = await bitbucket_client.get(endpoint, params={"start": start, "limit": 100})
+            response = await bitbucket_client.get(
+                endpoint, params={"start": start, "limit": 100}
+            )
             _handle_response(response)
             page = response.json()
             repos.extend(page["values"])
@@ -78,7 +96,7 @@ async def list_repos(bitbucket_client: Any, key: str) -> list[dict]:
             start = page["nextPageStart"]
         return repos
     except Exception as e:
-        logger.error(f"Unexpected error listing repos for project {key}: {str(e)}")
+        logger.error(f"Unexpected error listing repos for project {key}: {e!s}")
         raise
 
 
@@ -89,7 +107,7 @@ async def delete_repo(bitbucket_client: Any, key: str, repo_slug: str) -> None:
         _handle_response(response)
         logger.info(f"Repo {key}/{repo_slug} deleted")
     except Exception as e:
-        logger.error(f"Unexpected error deleting repo {key}/{repo_slug}: {str(e)}")
+        logger.error(f"Unexpected error deleting repo {key}/{repo_slug}: {e!s}")
         raise
 
 
@@ -106,39 +124,41 @@ async def delete_project(bitbucket_client: Any, key: str) -> None:
         response = await bitbucket_client.delete(endpoint)
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error deleting project {key}: {str(e)}")
+        logger.error(f"Unexpected error deleting project {key}: {e!s}")
         raise
 
+
 async def assign_admin_group_permission(bitbucket_client: Any, payload: ProjectSpec):
-    key, admin_group, base_endpoint = payload.key, payload.admin_group, f"{config.BITBUCKET_ENDPOINT}/projects"
+    key, admin_group, base_endpoint = (
+        payload.key,
+        payload.admin_group,
+        f"{config.BITBUCKET_ENDPOINT}/projects",
+    )
     endpoint = f"{base_endpoint}/{key}/permissions/groups?name={admin_group}&permission=PROJECT_ADMIN"
     try:
         response = await bitbucket_client.put(endpoint)
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error assigning admin group permission to project {key}: {str(e)}")
+        logger.error(
+            f"Unexpected error assigning admin group permission to project {key}: {e!s}"
+        )
         raise
 
 
 async def assign_admin_permission(bitbucket_client: Any, payload: ProjectSpec):
-    key, admin_user, base_endpoint = payload.key, payload.admin_user, f"{config.BITBUCKET_ENDPOINT}/projects"
+    key, admin_user, base_endpoint = (
+        payload.key,
+        payload.admin_user,
+        f"{config.BITBUCKET_ENDPOINT}/projects",
+    )
     endpoint = f"{base_endpoint}/{key}/permissions/users?name={admin_user}&permission=PROJECT_ADMIN"
     try:
         response = await bitbucket_client.put(endpoint)
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error assigning admin permission to project {key}: {str(e)}")
-        raise
-
-
-async def list_user_directories(bitbucket_client: Any) -> list[dict]:
-    endpoint = f"{config.BITBUCKET_CROWD_ENDPOINT}/directory"
-    try:
-        response = await bitbucket_client.get(endpoint, headers={"Accept": "application/json"})
-        _handle_response(response)
-        return response.json()["directory"]
-    except Exception as e:
-        logger.error(f"Unexpected error listing user directories: {str(e)}")
+        logger.error(
+            f"Unexpected error assigning admin permission to project {key}: {e!s}"
+        )
         raise
 
 

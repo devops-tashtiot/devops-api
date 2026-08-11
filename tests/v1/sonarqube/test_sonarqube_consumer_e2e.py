@@ -25,7 +25,9 @@ BITBUCKET_PASS = os.environ.get("BITBUCKET_PASS", "12345678")
 # missing and never tears it down; only the throwaway consumer name/file created inside it
 # per test run is cleaned up.
 GIT_PROJECT_KEY = os.environ.get("E2E_GIT_PROJECT_KEY", "ARGO")
-SONARQUBE_REPO_SLUG = os.environ.get("E2E_SONARQUBE_REPO_SLUG", "sonarqube-as-a-service")
+SONARQUBE_REPO_SLUG = os.environ.get(
+    "E2E_SONARQUBE_REPO_SLUG", "sonarqube-as-a-service"
+)
 
 CONSUMER_NAME = os.environ.get("E2E_CONSUMER_NAME", "e2e-test-consumer")
 
@@ -40,7 +42,9 @@ REQUEST_METADATA = {
 
 @pytest.fixture(scope="module")
 def bb():
-    with httpx.Client(base_url=BITBUCKET_URL, auth=(BITBUCKET_USER, BITBUCKET_PASS), timeout=30.0) as client:
+    with httpx.Client(
+        base_url=BITBUCKET_URL, auth=(BITBUCKET_USER, BITBUCKET_PASS), timeout=30.0
+    ) as client:
         yield client
 
 
@@ -59,12 +63,17 @@ def _ensure_gitops_project_and_repo(bb: httpx.Client):
     it)."""
     project = bb.get(f"/rest/api/latest/projects/{GIT_PROJECT_KEY}")
     if project.status_code == 404:
-        r = bb.post("/rest/api/latest/projects", json={"key": GIT_PROJECT_KEY, "name": GIT_PROJECT_KEY.lower()})
+        r = bb.post(
+            "/rest/api/latest/projects",
+            json={"key": GIT_PROJECT_KEY, "name": GIT_PROJECT_KEY.lower()},
+        )
         assert r.status_code == 201, r.text
     else:
         assert project.status_code == 200, project.text
 
-    repo = bb.get(f"/rest/api/latest/projects/{GIT_PROJECT_KEY}/repos/{SONARQUBE_REPO_SLUG}")
+    repo = bb.get(
+        f"/rest/api/latest/projects/{GIT_PROJECT_KEY}/repos/{SONARQUBE_REPO_SLUG}"
+    )
     if repo.status_code == 404:
         r = bb.post(
             f"/rest/api/latest/projects/{GIT_PROJECT_KEY}/repos",
@@ -117,7 +126,10 @@ def test_create_update_delete_consumer_config_full_flow(bb, api, clean_consumer_
             "metadata": REQUEST_METADATA,
             "spec": {
                 "name": CONSUMER_NAME,
-                "plugins_list": ["https://s3/sonar-plugins/plugin-a.jar", "https://s3/sonar-plugins/plugin-b.jar"],
+                "plugins_list": [
+                    "https://s3/sonar-plugins/plugin-a.jar",
+                    "https://s3/sonar-plugins/plugin-b.jar",
+                ],
                 "size": "medium",
             },
         },
@@ -129,7 +141,10 @@ def test_create_update_delete_consumer_config_full_flow(bb, api, clean_consumer_
     config = _get_config_yaml(bb, CONSUMER_NAME)
     assert config is not None, "config.yaml was not committed"
     assert config["name"] == CONSUMER_NAME
-    assert config["plugins_list"] == "https://s3/sonar-plugins/plugin-a.jar, https://s3/sonar-plugins/plugin-b.jar"
+    assert (
+        config["plugins_list"]
+        == "https://s3/sonar-plugins/plugin-a.jar, https://s3/sonar-plugins/plugin-b.jar"
+    )
     assert config["size"] == "medium"
 
     # --- update consumer config via our API ---
@@ -162,7 +177,9 @@ def test_create_update_delete_consumer_config_full_flow(bb, api, clean_consumer_
 
 
 @pytest.mark.integration
-def test_create_consumer_config_default_size_omits_size_key(bb, api, clean_consumer_config):
+def test_create_consumer_config_default_size_omits_size_key(
+    bb, api, clean_consumer_config
+):
     r = api.post(
         f"{PREFIX}/consumer/",
         json={"metadata": REQUEST_METADATA, "spec": {"name": CONSUMER_NAME}},

@@ -24,7 +24,9 @@ steps:
     image: harbor.devopstashtiot.page/base/uv/0.11.29/python-312:v1.0.0
     commands:
       - uv sync
-      - uv run pytest --cov=app --cov-report=xml --junitxml=test-report.xml
+      # Exclude @pytest.mark.integration — those hit live services (SonarQube, Bitbucket,
+      # MinIO, ...) that don't exist in the build runner and would error on connect.
+      - uv run pytest -m "not integration" --cov=app --cov-report=xml --junitxml=test-report.xml
       - uv run ruff check .
       - uv run ruff format --check .
 

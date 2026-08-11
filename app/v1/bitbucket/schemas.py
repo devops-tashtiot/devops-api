@@ -1,7 +1,5 @@
 from pydantic import BaseModel, Field, model_validator
-from typing import Optional
 from tashtiot_apis_library import OperationRequest
-
 
 
 class ProjectSpec(BaseModel):
@@ -10,30 +8,24 @@ class ProjectSpec(BaseModel):
         description="project key",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$"
+        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
-    
+
     name: str = Field(
         ...,
         description="project name",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$"
+        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
-    
+
     description: str = Field(
-        ...,
-        description="project description",
-        min_length=1,
-        max_length=1000
+        ..., description="project description", min_length=1, max_length=1000
     )
 
-    public: bool = Field(
-        default=False,
-        description="project visibility"
-    )
+    public: bool = Field(default=False, description="project visibility")
 
-    admin_user: Optional[str] = Field(
+    admin_user: str | None = Field(
         default=None,
         description="Username to receive PROJECT_ADMIN permission",
         min_length=1,
@@ -41,7 +33,7 @@ class ProjectSpec(BaseModel):
         pattern=r"^[a-z0-9]+$",
     )
 
-    admin_group: Optional[str] = Field(
+    admin_group: str | None = Field(
         default=None,
         description="Group name to receive PROJECT_ADMIN permission",
         min_length=1,

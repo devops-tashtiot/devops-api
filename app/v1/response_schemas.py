@@ -7,8 +7,6 @@ respective connector models.py files.
 
 from __future__ import annotations
 
-from typing import Optional
-
 from pydantic import BaseModel, Field
 
 __all__ = [
@@ -31,7 +29,7 @@ class ExceptionResponse(BaseModel):
         ...,
         description='Operation status: "successful", external service response, or "failed"',
     )
-    status_code: Optional[int] = Field(
+    status_code: int | None = Field(
         default=None,
         description="HTTP status code from external service",
     )

@@ -42,7 +42,9 @@ REQUEST_METADATA = {
 
 @pytest.fixture(scope="module")
 def bb():
-    with httpx.Client(base_url=BITBUCKET_URL, auth=(BITBUCKET_USER, BITBUCKET_PASS), timeout=30.0) as client:
+    with httpx.Client(
+        base_url=BITBUCKET_URL, auth=(BITBUCKET_USER, BITBUCKET_PASS), timeout=30.0
+    ) as client:
         yield client
 
 
@@ -59,12 +61,17 @@ def _ensure_gitops_project_and_repo(bb: httpx.Client):
     is shared across both modules' consumer-config repos."""
     project = bb.get(f"/rest/api/latest/projects/{GIT_PROJECT_KEY}")
     if project.status_code == 404:
-        r = bb.post("/rest/api/latest/projects", json={"key": GIT_PROJECT_KEY, "name": GIT_PROJECT_KEY.lower()})
+        r = bb.post(
+            "/rest/api/latest/projects",
+            json={"key": GIT_PROJECT_KEY, "name": GIT_PROJECT_KEY.lower()},
+        )
         assert r.status_code == 201, r.text
     else:
         assert project.status_code == 200, project.text
 
-    repo = bb.get(f"/rest/api/latest/projects/{GIT_PROJECT_KEY}/repos/{ARGOCD_REPO_SLUG}")
+    repo = bb.get(
+        f"/rest/api/latest/projects/{GIT_PROJECT_KEY}/repos/{ARGOCD_REPO_SLUG}"
+    )
     if repo.status_code == 404:
         r = bb.post(
             f"/rest/api/latest/projects/{GIT_PROJECT_KEY}/repos",
@@ -151,7 +158,14 @@ def test_create_consumer_config_with_rbac_lines(bb, api):
                 "include_resources": ["ConfigMap"],
                 "ad_admin_group": "my_group",
                 "g_lines": [{"ad_group": "DEV_MyTeam", "role": "myteam"}],
-                "p_lines": [{"role": "myteam", "resource": "applications", "action": "get", "object": "myteam/*"}],
+                "p_lines": [
+                    {
+                        "role": "myteam",
+                        "resource": "applications",
+                        "action": "get",
+                        "object": "myteam/*",
+                    }
+                ],
                 "extra_roles": ["p, role:extra, projects, get, myproj, allow"],
             },
         },
@@ -184,7 +198,9 @@ def test_create_consumer_config_with_extra_config(bb, api):
                 "include_resources": ["ConfigMap"],
                 "ad_admin_group": "my_group",
                 "config": {
-                    "extra_argocd_cm_args": {"server.rbac.log.enforce.enable": "verbose"},
+                    "extra_argocd_cm_args": {
+                        "server.rbac.log.enforce.enable": "verbose"
+                    },
                     "extra_argocd_params": {"controller.status.processors": 20},
                 },
             },
@@ -258,30 +274,41 @@ def test_get_environments_returns_allowed_values(api):
 ARGOCD_APP_NAME = os.environ.get("E2E_ARGOCD_APP_NAME", "netanel")
 ARGOCD_CHOSEN_NAME = os.environ.get("E2E_ARGOCD_CHOSEN_NAME", "e2e-test")
 ARGOCD_CLUSTER_TOKEN = os.environ.get("E2E_ARGOCD_CLUSTER_TOKEN", "")
-ARGOCD_CLUSTER_ADDRESS = os.environ.get("E2E_ARGOCD_CLUSTER_ADDRESS", "https://kubernetes.default.svc")
+ARGOCD_CLUSTER_ADDRESS = os.environ.get(
+    "E2E_ARGOCD_CLUSTER_ADDRESS", "https://kubernetes.default.svc"
+)
 
 CLUSTER_SECRET_PAYLOAD = {
     "metadata": REQUEST_METADATA,
     "spec": {
         "chosen_name": ARGOCD_CHOSEN_NAME,
         "app_name": ARGOCD_APP_NAME,
-        "application_clusters": [{
-            "name": "openshift",
-            "namespace": "default",
-            "address": ARGOCD_CLUSTER_ADDRESS,
-            "token": ARGOCD_CLUSTER_TOKEN,
-        }],
+        "application_clusters": [
+            {
+                "name": "openshift",
+                "namespace": "default",
+                "address": ARGOCD_CLUSTER_ADDRESS,
+                "token": ARGOCD_CLUSTER_TOKEN,
+            }
+        ],
     },
 }
 
 
 @pytest.mark.integration
-@pytest.mark.skipif(not ARGOCD_CLUSTER_TOKEN, reason="set E2E_ARGOCD_CLUSTER_TOKEN to a live cluster-admin token to run")
+@pytest.mark.skipif(
+    not ARGOCD_CLUSTER_TOKEN,
+    reason="set E2E_ARGOCD_CLUSTER_TOKEN to a live cluster-admin token to run",
+)
 def test_create_update_delete_cluster_secret_full_flow(api):
     # --- clean state (ignore failure — may not exist yet) ---
-    api.delete(f"{PREFIX}/cluster-secret", params={
-        "app_name": ARGOCD_APP_NAME, "chosen_name": ARGOCD_CHOSEN_NAME,
-    })
+    api.delete(
+        f"{PREFIX}/cluster-secret",
+        params={
+            "app_name": ARGOCD_APP_NAME,
+            "chosen_name": ARGOCD_CHOSEN_NAME,
+        },
+    )
 
     # --- create cluster secret via our API ---
     r = api.post(f"{PREFIX}/cluster-secret", json=CLUSTER_SECRET_PAYLOAD)
@@ -292,19 +319,28 @@ def test_create_update_delete_cluster_secret_full_flow(api):
     update_payload = {
         "metadata": REQUEST_METADATA,
         "spec": {
-            "application_clusters": [{
-                "name": "openshift",
-                "namespace": "default,kube-system",
-                "address": ARGOCD_CLUSTER_ADDRESS,
-                "token": ARGOCD_CLUSTER_TOKEN,
-            }],
+            "application_clusters": [
+                {
+                    "name": "openshift",
+                    "namespace": "default,kube-system",
+                    "address": ARGOCD_CLUSTER_ADDRESS,
+                    "token": ARGOCD_CLUSTER_TOKEN,
+                }
+            ],
         },
     }
-    r = api.put(f"{PREFIX}/cluster-secret/{ARGOCD_APP_NAME}/{ARGOCD_CHOSEN_NAME}", json=update_payload)
+    r = api.put(
+        f"{PREFIX}/cluster-secret/{ARGOCD_APP_NAME}/{ARGOCD_CHOSEN_NAME}",
+        json=update_payload,
+    )
     assert r.status_code == 200, r.text
 
     # --- delete it ---
-    r = api.delete(f"{PREFIX}/cluster-secret", params={
-        "app_name": ARGOCD_APP_NAME, "chosen_name": ARGOCD_CHOSEN_NAME,
-    })
+    r = api.delete(
+        f"{PREFIX}/cluster-secret",
+        params={
+            "app_name": ARGOCD_APP_NAME,
+            "chosen_name": ARGOCD_CHOSEN_NAME,
+        },
+    )
     assert r.status_code == 200, r.text

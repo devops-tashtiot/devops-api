@@ -1,20 +1,22 @@
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import ProjectSpec, JiraProjectRequest
-from typing import Any
 from loguru import logger
+
+from app.v1.response_schemas import ExceptionResponse, SuccessResponse
+
 from .conf import config
 from .operations import (
+    assert_group_exists,
+    assert_user_exists,
+    assign_project_admin_group,
+    assign_project_admin_user,
     create_project,
     delete_project,
-    assign_project_admin_user,
-    assign_project_admin_group,
-    list_user_directories,
     sync_user_directory,
-    assert_user_exists,
-    assert_group_exists,
 )
+from .schemas import JiraProjectRequest, ProjectSpec
 
 
 def get_v1_jira_router(jira_client: Any):
@@ -44,10 +46,12 @@ def get_v1_jira_router(jira_client: Any):
             try:
                 await delete_project(jira_client, payload.spec)
             except Exception as rollback_error:
-                logger.error(f"Rollback failed for project {payload.spec.key}: {rollback_error}")
+                logger.error(
+                    f"Rollback failed for project {payload.spec.key}: {rollback_error}"
+                )
             return JSONResponse(
                 ExceptionResponse(
-                    stdout=f"Exception in Jira. {str(e)}",
+                    stdout=f"Exception in Jira. {e!s}",
                     status="Failed",
                     status_code=500,
                 ).dict(),
@@ -57,23 +61,10 @@ def get_v1_jira_router(jira_client: Any):
     @router.delete("/{project_key}", name="delete project", status_code=200)
     async def delete_existing_project(project_key: str) -> JSONResponse:
         try:
-            await delete_project(jira_client, ProjectSpec.model_construct(key=project_key))
-            return SuccessResponse(status="successful")
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception in Jira. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
+            await delete_project(
+                jira_client, ProjectSpec.model_construct(key=project_key)
             )
-
-    @router.get("/user-dirs", name="list user directories", status_code=200)
-    async def get_user_directories() -> JSONResponse:
-        try:
-            dirs = await list_user_directories(jira_client)
-            return JSONResponse(content=dirs)
+            return SuccessResponse(status="successful")
         except HTTPException as external_error:
             return JSONResponse(
                 ExceptionResponse(

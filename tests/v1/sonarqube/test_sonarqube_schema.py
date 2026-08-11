@@ -1,7 +1,11 @@
 import pytest
 from pydantic import ValidationError
 
-from app.v1.sonarqube.schemas import GroupSpec, SonarQubeConsumerSpec, SonarQubeConsumerUpdateSpec
+from app.v1.sonarqube.schemas import (
+    GroupSpec,
+    SonarQubeConsumerSpec,
+    SonarQubeConsumerUpdateSpec,
+)
 
 
 def test_valid_group_name():
@@ -42,6 +46,7 @@ def test_name_at_max_length_valid():
 
 # ── consumer_name validation ──────────────────────────────────────────────────
 
+
 def test_consumer_name_with_special_chars_raises():
     with pytest.raises(ValidationError):
         GroupSpec(consumer_name="invalid@consumer", name="check")
@@ -59,6 +64,7 @@ def test_consumer_name_at_max_length_valid():
 
 # ── SonarQubeConsumerSpec ──────────────────────────────────────────────────────
 
+
 class TestSonarQubeConsumerSpec:
     def test_valid_minimal_payload(self):
         spec = SonarQubeConsumerSpec(name="my-consumer")
@@ -72,7 +78,10 @@ class TestSonarQubeConsumerSpec:
             plugins_list=["https://s3/plugin-a.jar", "https://s3/plugin-b.jar"],
             size="medium",
         )
-        assert spec.plugins_list == ["https://s3/plugin-a.jar", "https://s3/plugin-b.jar"]
+        assert spec.plugins_list == [
+            "https://s3/plugin-a.jar",
+            "https://s3/plugin-b.jar",
+        ]
 
     def test_empty_name_raises(self):
         with pytest.raises(ValidationError):
@@ -88,11 +97,15 @@ class TestSonarQubeConsumerSpec:
 
     def test_plugin_entry_with_comma_raises(self):
         with pytest.raises(ValidationError):
-            SonarQubeConsumerSpec(name="my-consumer", plugins_list=["https://s3/a.jar,https://s3/b.jar"])
+            SonarQubeConsumerSpec(
+                name="my-consumer", plugins_list=["https://s3/a.jar,https://s3/b.jar"]
+            )
 
     def test_plugin_entry_with_quote_raises(self):
         with pytest.raises(ValidationError):
-            SonarQubeConsumerSpec(name="my-consumer", plugins_list=['https://s3/plugin"a.jar'])
+            SonarQubeConsumerSpec(
+                name="my-consumer", plugins_list=['https://s3/plugin"a.jar']
+            )
 
     def test_empty_plugins_list_valid(self):
         spec = SonarQubeConsumerSpec(name="my-consumer", plugins_list=[])
@@ -101,6 +114,7 @@ class TestSonarQubeConsumerSpec:
 
 # ── SonarQubeConsumerUpdateSpec ────────────────────────────────────────────────
 
+
 class TestSonarQubeConsumerUpdateSpec:
     def test_valid_minimal_payload(self):
         spec = SonarQubeConsumerUpdateSpec()
@@ -108,7 +122,9 @@ class TestSonarQubeConsumerUpdateSpec:
         assert spec.size == "default"
 
     def test_valid_with_plugins_and_size(self):
-        spec = SonarQubeConsumerUpdateSpec(plugins_list=["https://s3/plugin-c.jar"], size="big")
+        spec = SonarQubeConsumerUpdateSpec(
+            plugins_list=["https://s3/plugin-c.jar"], size="big"
+        )
         assert spec.plugins_list == ["https://s3/plugin-c.jar"]
         assert spec.size == "big"
 
@@ -118,9 +134,10 @@ class TestSonarQubeConsumerUpdateSpec:
 
     def test_plugin_entry_with_comma_raises(self):
         with pytest.raises(ValidationError):
-            SonarQubeConsumerUpdateSpec(plugins_list=["https://s3/a.jar,https://s3/b.jar"])
+            SonarQubeConsumerUpdateSpec(
+                plugins_list=["https://s3/a.jar,https://s3/b.jar"]
+            )
 
     def test_plugin_entry_with_quote_raises(self):
         with pytest.raises(ValidationError):
             SonarQubeConsumerUpdateSpec(plugins_list=['https://s3/plugin"c.jar'])
-

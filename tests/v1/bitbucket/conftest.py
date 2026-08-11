@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -14,10 +15,14 @@ def mock_bitbucket_client():
     ok.text = ""
     ok_get = MagicMock()
     ok_get.status_code = 200
-    ok_get.json = MagicMock(return_value={"values": [
-        {"slug": "nati", "name": "nati"},
-        {"slug": "devops-team", "name": "devops-team"},
-    ]})
+    ok_get.json = MagicMock(
+        return_value={
+            "values": [
+                {"slug": "nati", "name": "nati"},
+                {"slug": "devops-team", "name": "devops-team"},
+            ]
+        }
+    )
     client.post = AsyncMock(return_value=ok)
     client.put = AsyncMock(return_value=ok)
     client.delete = AsyncMock(return_value=ok)

@@ -16,7 +16,6 @@ Passed into `get_v1_jira_router(jira_client)` at startup — no per-request reco
 |--------|------|-----------|
 | `POST` | `/` | Create project + assign admin (user and/or group) |
 | `DELETE` | `/{project_key}` | Delete project |
-| `GET` | `/user-dirs` | List user directories |
 | `POST` | `/user-dirs/sync` | Sync the single user directory (ID auto-discovered) |
 
 > Route paths above are devops-api's own; the upstream Jira endpoints they call are `/rest/crowd/latest/directory` (see below).
@@ -99,31 +98,6 @@ POST /rest/api/latest/project/{key}/role/10002
 Body: {"group": [admin_group]}
 → 200
 ```
-
-### List user directories — `GET /rest/crowd/latest/directory`
-
-```
-GET /rest/crowd/latest/directory
-Header: Accept: application/json   (required — without it Jira defaults to XML and 500s:
-  no XML message-body-writer is registered for this endpoint's response type)
-→ 200, {"directories": [{"name": ..., "links": [{"href": "https://.../directory/{id}", "rel": "self"}], "sync"?: {...}}, ...]}
-```
-
-Confirmed against Jira 9.12.8 (Data Center). This is the same Atlassian Crowd-embedded REST
-resource Confluence uses (`app/v1/confluence/CLAUDE.md` — identical Java class in the server
-logs: `com.atlassian.crowd.embedded.admin.rest.entities.DirectoryList`), but the two products
-don't return identical shapes: Jira's top-level key is `directories` (plural) and `links`
-(plural); Confluence's is `directory` (singular) and `link` (singular). Neither response includes
-an `id` field on each directory object — the numeric ID only exists embedded in
-`links[0].href` (e.g. `.../directory/10000` → `10000`), which `sync_user_directory` parses out.
-`GET /rest/api/latest/admin/user-directories` (Bitbucket's convention) 404s on Jira — Bitbucket's
-admin REST API and this Crowd-embedded API are two different things, not a shared convention
-across products.
-
-Requires Jira **System Administrator** (not just regular Administrator) on the calling account —
-`ADMINISTER: true` alone gets a 403 "Client must be authenticated as a system administrator"; the
-account needs `SYSTEM_ADMIN: true` (`GET /rest/api/2/mypermissions`), normally granted via the
-`jira-system-administrators` group.
 
 ### Sync user directory — unsupported, `sync_user_directory` always raises `501`
 

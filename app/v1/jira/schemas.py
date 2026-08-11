@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 from tashtiot_apis_library import OperationRequest
 
 
@@ -39,7 +38,7 @@ class ProjectSpec(BaseModel):
         pattern=r"^[a-z0-9_\-]+$",
     )
 
-    admin_group: Optional[str] = Field(
+    admin_group: str | None = Field(
         default=None,
         description="Group name to additionally receive project administrator role",
         min_length=1,

@@ -165,14 +165,3 @@ CONFLUENCE_S3_IMPORTS_BASE_URL=http://localhost:9100/platform-clients/confluence
 
 ---
 
-### `GET /user-dirs`
-
-Returns all user directories configured in Confluence (including AD/LDAP directories).
-
----
-
-### `POST /user-dirs/sync`
-
-**Always returns `501`.** Confluence has no supported API to trigger a directory sync on
-demand — confirmed by live testing, see `app/v1/confluence/CLAUDE.md`. Directories sync on
-Confluence's own automatic schedule; this endpoint cannot force one.

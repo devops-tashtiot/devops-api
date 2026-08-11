@@ -5,18 +5,31 @@ from tashtiot_apis_library.fastapi_template.utils import BaseAPI
 
 from app.global_conf import global_config
 from app.v1.response_schemas import ExceptionResponse, SuccessResponse
+
 from .conf import config
 from .operations import (
-    assign_global_permissions, assign_template_permissions,
-    create_group, delete_group,
-    create_sonarqube_consumer, update_sonarqube_consumer, delete_sonarqube_consumer,
+    assign_global_permissions,
+    assign_template_permissions,
+    create_group,
+    create_sonarqube_consumer,
+    delete_group,
+    delete_sonarqube_consumer,
+    update_sonarqube_consumer,
 )
-from .schemas import GroupSpec, SonarQubeConsumerSpec, SonarQubeConsumerUpdateSpec, SonarQubeSizeEnum, SonarQubeGroupRequest, SonarQubeConsumerRequest, SonarQubeConsumerUpdateRequest
+from .schemas import (
+    GroupSpec,
+    SonarQubeConsumerRequest,
+    SonarQubeConsumerUpdateRequest,
+    SonarQubeGroupRequest,
+    SonarQubeSizeEnum,
+)
 
 
 def _build_client(consumer_name: str) -> BaseAPI:
     url = f"https://{consumer_name}.sonarqube.{global_config.DOMAIN_SUFFIX}"
-    return BaseAPI(url, auth=(global_config.SONARQUBE_USERNAME, global_config.SONARQUBE_PASSWORD)).client
+    return BaseAPI(
+        url, auth=(global_config.SONARQUBE_USERNAME, global_config.SONARQUBE_PASSWORD)
+    ).client
 
 
 def get_v1_sonarqube_router(git: Git):
@@ -53,7 +66,7 @@ def get_v1_sonarqube_router(git: Git):
                 ).dict(),
                 status_code=external_error.status_code,
             )
-        except:
+        except Exception:
             await delete_group(client, payload.spec)
 
     @router.post("/consumer/", name="create sonarqube consumer config", status_code=200)
@@ -71,8 +84,12 @@ def get_v1_sonarqube_router(git: Git):
                 status_code=external_error.status_code,
             )
 
-    @router.put("/consumer/{name}", name="update sonarqube consumer config", status_code=200)
-    async def edit_consumer(name: str, payload: SonarQubeConsumerUpdateRequest) -> JSONResponse:
+    @router.put(
+        "/consumer/{name}", name="update sonarqube consumer config", status_code=200
+    )
+    async def edit_consumer(
+        name: str, payload: SonarQubeConsumerUpdateRequest
+    ) -> JSONResponse:
         try:
             await update_sonarqube_consumer(git, name, payload.spec)
             return SuccessResponse(status="successful")
@@ -86,7 +103,9 @@ def get_v1_sonarqube_router(git: Git):
                 status_code=external_error.status_code,
             )
 
-    @router.delete("/consumer/{name}", name="delete sonarqube consumer config", status_code=200)
+    @router.delete(
+        "/consumer/{name}", name="delete sonarqube consumer config", status_code=200
+    )
     async def delete_consumer(name: str) -> JSONResponse:
         try:
             await delete_sonarqube_consumer(git, name)
@@ -104,7 +123,9 @@ def get_v1_sonarqube_router(git: Git):
     # Registered last: this generic two-segment wildcard would otherwise shadow
     # DELETE /consumer/{name} above, since Starlette matches routes in registration order
     # and both patterns fit the same "/consumer/<x>" shape (confirmed live — see CLAUDE.md).
-    @router.delete("/{consumer_name}/{name}", name="delete sonarqube group", status_code=200)
+    @router.delete(
+        "/{consumer_name}/{name}", name="delete sonarqube group", status_code=200
+    )
     async def delete_existing_group(consumer_name: str, name: str) -> JSONResponse:
         stub = GroupSpec(consumer_name=consumer_name, name=name)
         client = _build_client(consumer_name)

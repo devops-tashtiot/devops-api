@@ -1,9 +1,8 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class JiraConfig(BaseSettings):
-
     API_PREFIX: str = Field(
         default="/api/v1/devops/jira",
         description="API prefix for api exposure",
@@ -13,7 +12,7 @@ class JiraConfig(BaseSettings):
         default=["v1 - Jira Operations"],
         description="Tags used for OpenAPI documentation grouping.",
     )
-    
+
     JIRA_ENDPOINT: str = Field(
         default="/rest/api/latest",
         description="API endpoint for Jira",

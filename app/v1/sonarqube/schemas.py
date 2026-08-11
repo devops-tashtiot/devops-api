@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional
+
 from pydantic import BaseModel, Field, model_validator
 from tashtiot_apis_library import OperationRequest
 
@@ -20,12 +20,12 @@ class SonarQubeConsumerSpec(BaseModel):
         max_length=255,
         pattern=r"^[a-zA-Z0-9_\-]+$",
     )
-    plugins_list: Optional[list[str]] = Field(
+    plugins_list: list[str] | None = Field(
         default=None,
         description=(
             "SonarQube plugin keys to install for this consumer. "
             "Serialized as a comma-separated string in config.yaml "
-            "for the ApplicationSet template (.plugins_list | quote | split \", \")."
+            'for the ApplicationSet template (.plugins_list | quote | split ", ").'
         ),
     )
 
@@ -38,6 +38,7 @@ class SonarQubeConsumerSpec(BaseModel):
                     f"Plugin entries must not contain commas or quotes (they break the ApplicationSet split): {bad}"
                 )
         return self
+
     size: SonarQubeSizeEnum = Field(
         default=SonarQubeSizeEnum.default,
         description="Instance size — 'default' omits the key from config.yaml; 'medium' and 'big' are written explicitly",
@@ -45,7 +46,7 @@ class SonarQubeConsumerSpec(BaseModel):
 
 
 class SonarQubeConsumerUpdateSpec(BaseModel):
-    plugins_list: Optional[list[str]] = Field(
+    plugins_list: list[str] | None = Field(
         default=None,
         description=(
             "Updated list of SonarQube plugin keys. "

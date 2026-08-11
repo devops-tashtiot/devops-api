@@ -1,19 +1,22 @@
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
-from app.v1.response_schemas import ExceptionResponse, SuccessResponse
-from .schemas import ProjectSpec, BitbucketProjectRequest
-from typing import Any
 from loguru import logger
+
+from app.v1.response_schemas import ExceptionResponse, SuccessResponse
+
 from .conf import config
 from .operations import (
+    assign_admin_group_permission,
+    assign_admin_permission,
     create_project,
     delete_project,
-    assign_admin_permission,
-    assign_admin_group_permission,
-    list_user_directories,
     sync_user_directory,
     validate_admin_principals,
 )
+from .schemas import BitbucketProjectRequest
+
 
 def get_v1_bitbucket_router(bitbucket_client: Any):
     router = APIRouter(prefix=config.API_PREFIX, tags=config.API_TAGS)
@@ -33,18 +36,20 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
                 ExceptionResponse(
                     stdout=f"Exception in Bitbucket. {external_error.detail}",
                     status="Failed",
-                    status_code=external_error.status_code
+                    status_code=external_error.status_code,
                 ).dict(),
-                status_code=external_error.status_code
+                status_code=external_error.status_code,
             )
         except Exception as e:
             try:
                 await delete_project(bitbucket_client, payload.spec.key)
             except Exception as rollback_error:
-                logger.error(f"Rollback failed for project {payload.spec.key}: {rollback_error}")
+                logger.error(
+                    f"Rollback failed for project {payload.spec.key}: {rollback_error}"
+                )
             return JSONResponse(
                 ExceptionResponse(
-                    stdout=f"Exception in Bitbucket. {str(e)}",
+                    stdout=f"Exception in Bitbucket. {e!s}",
                     status="Failed",
                     status_code=500,
                 ).dict(),
@@ -56,21 +61,6 @@ def get_v1_bitbucket_router(bitbucket_client: Any):
         try:
             await delete_project(bitbucket_client, key)
             return SuccessResponse(status="successful")
-        except HTTPException as external_error:
-            return JSONResponse(
-                ExceptionResponse(
-                    stdout=f"Exception in Bitbucket. {external_error.detail}",
-                    status="Failed",
-                    status_code=external_error.status_code,
-                ).dict(),
-                status_code=external_error.status_code,
-            )
-
-    @router.get("/user-dirs", name="list user directories", status_code=200)
-    async def get_user_directories() -> JSONResponse:
-        try:
-            dirs = await list_user_directories(bitbucket_client)
-            return JSONResponse(content=dirs)
         except HTTPException as external_error:
             return JSONResponse(
                 ExceptionResponse(

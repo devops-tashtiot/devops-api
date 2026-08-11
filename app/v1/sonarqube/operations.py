@@ -6,7 +6,12 @@ from loguru import logger
 from tashtiot_apis_library import Git
 
 from .conf import config
-from .schemas import GroupSpec, SonarQubeConsumerSpec, SonarQubeConsumerUpdateSpec, SonarQubeSizeEnum
+from .schemas import (
+    GroupSpec,
+    SonarQubeConsumerSpec,
+    SonarQubeConsumerUpdateSpec,
+    SonarQubeSizeEnum,
+)
 
 SONARQUBE_GLOBAL_PERMISSIONS = config.SONARQUBE_GLOBAL_PERMISSIONS
 SONARQUBE_TEMPLATE_PERMISSIONS = config.SONARQUBE_TEMPLATE_PERMISSIONS
@@ -28,7 +33,7 @@ async def create_group(sonarqube_client: Any, payload: GroupSpec):
         response = await sonarqube_client.post(endpoint, params={"name": name})
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error creating group {name}: {str(e)}")
+        logger.error(f"Unexpected error creating group {name}: {e!s}")
         raise
 
 
@@ -38,7 +43,7 @@ async def delete_group(sonarqube_client: Any, payload: GroupSpec):
         response = await sonarqube_client.post(endpoint, params={"name": name})
         _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error deleting group {name}: {str(e)}")
+        logger.error(f"Unexpected error deleting group {name}: {e!s}")
         raise
 
 
@@ -46,10 +51,14 @@ async def assign_global_permissions(sonarqube_client: Any, payload: GroupSpec):
     name, endpoint = payload.name, f"{config.SONARQUBE_ENDPOINT}/permissions/add_group"
     try:
         for permission in config.SONARQUBE_GLOBAL_PERMISSIONS:
-            response = await sonarqube_client.post(endpoint, params={"groupName": name, "permission": permission})
+            response = await sonarqube_client.post(
+                endpoint, params={"groupName": name, "permission": permission}
+            )
             _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error assigning global permissions to group {name}: {str(e)}")
+        logger.error(
+            f"Unexpected error assigning global permissions to group {name}: {e!s}"
+        )
         raise
 
 
@@ -62,13 +71,19 @@ async def create_sonarqube_consumer(git: Git, payload: SonarQubeConsumerSpec) ->
         data["size"] = payload.size.value
     content = yaml.dump(data, default_flow_style=False, sort_keys=False)
     try:
-        await git.add_file(path, f"Add sonarqube consumer config for {payload.name}", content)
+        await git.add_file(
+            path, f"Add sonarqube consumer config for {payload.name}", content
+        )
     except Exception as e:
-        logger.error(f"Unexpected error creating sonarqube consumer config {payload.name}: {str(e)}")
+        logger.error(
+            f"Unexpected error creating sonarqube consumer config {payload.name}: {e!s}"
+        )
         raise
 
 
-async def update_sonarqube_consumer(git: Git, name: str, payload: SonarQubeConsumerUpdateSpec) -> None:
+async def update_sonarqube_consumer(
+    git: Git, name: str, payload: SonarQubeConsumerUpdateSpec
+) -> None:
     path = f"consumers/{name}/config.yaml"
     data: dict = {"name": name}
     if payload.plugins_list:
@@ -77,9 +92,13 @@ async def update_sonarqube_consumer(git: Git, name: str, payload: SonarQubeConsu
         data["size"] = payload.size.value
     content = yaml.dump(data, default_flow_style=False, sort_keys=False)
     try:
-        await git.modify_file(path, f"Update sonarqube consumer config for {name}", content)
+        await git.modify_file(
+            path, f"Update sonarqube consumer config for {name}", content
+        )
     except Exception as e:
-        logger.error(f"Unexpected error updating sonarqube consumer config {name}: {str(e)}")
+        logger.error(
+            f"Unexpected error updating sonarqube consumer config {name}: {e!s}"
+        )
         raise
 
 
@@ -88,12 +107,17 @@ async def delete_sonarqube_consumer(git: Git, name: str) -> None:
     try:
         await git.delete_file(path, f"Delete sonarqube consumer config for {name}")
     except Exception as e:
-        logger.error(f"Unexpected error deleting sonarqube consumer config {name}: {str(e)}")
+        logger.error(
+            f"Unexpected error deleting sonarqube consumer config {name}: {e!s}"
+        )
         raise
 
 
 async def assign_template_permissions(sonarqube_client: Any, payload: GroupSpec):
-    name, endpoint = payload.name, f"{config.SONARQUBE_ENDPOINT}/permissions/add_group_to_template"
+    name, endpoint = (
+        payload.name,
+        f"{config.SONARQUBE_ENDPOINT}/permissions/add_group_to_template",
+    )
     try:
         for permission in config.SONARQUBE_TEMPLATE_PERMISSIONS:
             response = await sonarqube_client.post(
@@ -106,5 +130,7 @@ async def assign_template_permissions(sonarqube_client: Any, payload: GroupSpec)
             )
             _handle_response(response)
     except Exception as e:
-        logger.error(f"Unexpected error assigning template permissions to group {name}: {str(e)}")
+        logger.error(
+            f"Unexpected error assigning template permissions to group {name}: {e!s}"
+        )
         raise

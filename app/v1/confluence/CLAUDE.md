@@ -18,8 +18,6 @@ Passed into `get_v1_confluence_router(confluence_client)` at startup — no per-
 | `DELETE` | `/{key}` | Delete space |
 | `POST` | `/plugin/` | Install plugin from S3 via UPM |
 | `DELETE` | `/plugin/{plugin_key:path}` | Uninstall plugin by OSGi key |
-| `GET` | `/user-dirs` | List Crowd user directories |
-| `POST` | `/user-dirs/sync` | Sync the single Crowd user directory (ID auto-discovered) |
 | `POST` | `/space-export/` | Export space to S3 |
 | `POST` | `/space-import/` | Import space from S3 |
 
@@ -119,21 +117,6 @@ poll GET /rest/api/backup-restore/jobs/{id}  until jobState == "FINISHED"
 ```
 
 `space_key` is not in the schema — Confluence restores the space key directly from the archive and provides no way to override it.
-
-## User directories (Crowd REST API)
-
-```
-GET  /rest/crowd/latest/directory   → list all directories, unwrapped from {"directory": [...]}
-```
-
-`sync_user_directory` always raises `501` — **Confluence has no supported way to trigger a
-directory sync on demand**. `POST /rest/crowd/latest/directory/{id}/synchronise` 404s even
-against a real AD-connector directory ID. Same underlying Atlassian Crowd-embedded module,
-same missing REST trigger as Bitbucket — see `app/v1/bitbucket/CLAUDE.md` for the full
-investigation, including why the undocumented web-UI servlet alternative that exists on
-Bitbucket isn't usable either (its response can't distinguish a real sync from a silent no-op).
-Directories sync on Confluence's own automatic schedule only; there is no reliable programmatic
-way to force one.
 
 ## Config fields (`conf.py`)
 

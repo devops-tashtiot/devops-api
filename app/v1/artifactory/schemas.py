@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, model_validator
-from typing import Optional
 from enum import Enum
+
+from pydantic import BaseModel, Field, model_validator
 from tashtiot_apis_library import OperationRequest
 
 
@@ -34,7 +34,6 @@ class ProjectPermissionSpec(BaseModel):
     )
 
 
-
 class StorageQuotaBytes(BaseModel):
     name: str = Field(
         ...,
@@ -64,7 +63,7 @@ class ProjectSpec(BaseModel):
         le=10,
     )
 
-    admin_user: Optional[str] = Field(
+    admin_user: str | None = Field(
         default=None,
         description="Username to receive PROJECT_ADMIN role",
         min_length=1,
@@ -72,7 +71,7 @@ class ProjectSpec(BaseModel):
         pattern=r"^[a-z0-9_\-]+$",
     )
 
-    admin_group: Optional[str] = Field(
+    admin_group: str | None = Field(
         default=None,
         description="Group name to receive PROJECT_ADMIN role",
         min_length=1,

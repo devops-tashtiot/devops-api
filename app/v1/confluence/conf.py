@@ -1,9 +1,8 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class ConfluenceConfig(BaseSettings):
-
     API_PREFIX: str = Field(
         default="/api/v1/devops/confluence",
         description="API prefix for api exposure",
@@ -13,7 +12,7 @@ class ConfluenceConfig(BaseSettings):
         default=["v1 - Confluence Operations"],
         description="Tags used for OpenAPI documentation grouping.",
     )
-    
+
     CONFLUENCE_ENDPOINT: str = Field(
         default="/rest/api/latest",
         description="Base REST API path for Confluence Server",
@@ -43,8 +42,6 @@ class ConfluenceConfig(BaseSettings):
         default=60,
         description="Maximum poll attempts before timeout",
     )
-
-
 
 
 config = ConfluenceConfig()

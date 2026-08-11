@@ -38,16 +38,7 @@ repository under the project, then deletes the project itself.
 
 ---
 
-### `GET /user-dirs`
-
-Returns all user directories configured in Bitbucket (including AD/LDAP directories).
-
-**Response** — JSON array (unwrapped from Bitbucket's `{"directory": [...]}`) from
-`/rest/crowd/latest/directory`.
-
----
-
 ### `POST /user-dirs/sync`
 
-Triggers a synchronisation of the first user directory returned by `GET /user-dirs` (ID is
-auto-discovered, not supplied by the caller).
+Triggers a synchronisation of the configured user directory (ID is auto-discovered, not
+supplied by the caller).

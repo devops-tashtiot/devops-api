@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -19,7 +20,7 @@ def mock_s3_http():
     mock_http = AsyncMock()
     mock_http.get = AsyncMock(return_value=s3_response)
 
-    with patch("app.v1.confluence.operations.httpx.AsyncClient") as mock_cls:
+    with patch("app.helpers.httpx.AsyncClient") as mock_cls:
         mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         yield mock_http

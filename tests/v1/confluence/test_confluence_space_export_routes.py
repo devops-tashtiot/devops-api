@@ -1,4 +1,5 @@
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -26,7 +27,11 @@ def mock_confluence_client():
     trigger_response = MagicMock()
     trigger_response.status_code = 200
     trigger_response.text = ""
-    trigger_response.json.return_value = {"id": 99, "fileName": FAKE_ARCHIVE_NAME, "jobState": "QUEUED"}
+    trigger_response.json.return_value = {
+        "id": 99,
+        "fileName": FAKE_ARCHIVE_NAME,
+        "jobState": "QUEUED",
+    }
 
     poll_response = MagicMock()
     poll_response.status_code = 200
@@ -51,7 +56,7 @@ def mock_s3_upload():
     mock_http = AsyncMock()
     mock_http.put = AsyncMock(return_value=upload_response)
 
-    with patch("app.v1.confluence.operations.httpx.AsyncClient") as mock_cls:
+    with patch("app.helpers.httpx.AsyncClient") as mock_cls:
         mock_cls.return_value.__aenter__ = AsyncMock(return_value=mock_http)
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
         yield mock_http
@@ -71,7 +76,9 @@ def test_export_returns_200_with_archive_name(client, mock_s3_upload):
     assert response.json()["archive_name"] == FAKE_ARCHIVE_NAME
 
 
-def test_export_triggers_backup_with_space_key(client, mock_s3_upload, mock_confluence_client):
+def test_export_triggers_backup_with_space_key(
+    client, mock_s3_upload, mock_confluence_client
+):
     client.post(f"{PREFIX}/space-export/", json=VALID_PAYLOAD)
     endpoint = mock_confluence_client.post.call_args.args[0]
     assert "backup/space" in endpoint
@@ -100,7 +107,9 @@ def test_export_uploads_to_s3(client, mock_s3_upload):
 
 def test_export_confluence_error_returns_error_response(mock_s3_upload):
     bad_client = MagicMock()
-    bad_client.post = AsyncMock(return_value=MagicMock(status_code=500, text="Server Error"))
+    bad_client.post = AsyncMock(
+        return_value=MagicMock(status_code=500, text="Server Error")
+    )
     app = FastAPI()
     app.include_router(get_v1_confluence_router(bad_client))
     c = TestClient(app)
@@ -115,12 +124,20 @@ def test_export_job_failed_returns_422(mock_s3_upload):
     trigger_response = MagicMock()
     trigger_response.status_code = 200
     trigger_response.text = ""
-    trigger_response.json.return_value = {"id": 77, "fileName": "export.zip", "jobState": "QUEUED"}
+    trigger_response.json.return_value = {
+        "id": 77,
+        "fileName": "export.zip",
+        "jobState": "QUEUED",
+    }
 
     failed_response = MagicMock()
     failed_response.status_code = 200
     failed_response.text = ""
-    failed_response.json.return_value = {"id": 77, "jobState": "FAILED", "errorMessage": "space not found"}
+    failed_response.json.return_value = {
+        "id": 77,
+        "jobState": "FAILED",
+        "errorMessage": "space not found",
+    }
 
     client.post = AsyncMock(return_value=trigger_response)
     client.get = AsyncMock(return_value=failed_response)
@@ -137,7 +154,7 @@ def test_export_s3_upload_error_returns_502(mock_confluence_client):
     bad_http = AsyncMock()
     bad_http.put = AsyncMock(return_value=MagicMock(status_code=503))
 
-    with patch("app.v1.confluence.operations.httpx.AsyncClient") as mock_cls:
+    with patch("app.helpers.httpx.AsyncClient") as mock_cls:
         mock_cls.return_value.__aenter__ = AsyncMock(return_value=bad_http)
         mock_cls.return_value.__aexit__ = AsyncMock(return_value=False)
 
