@@ -1,0 +1,57 @@
+# Runs on every pull request: python checks -> Sonar scan -> master-versions
+# (calculate versions from the PR body) -> buildah build & push. No git push here
+# (changelogs/tags are only committed on publish — see publish_version.yaml).
+clone:
+  git:
+    image: harbor.devopstashtiot.page/plugins/plugin-git-cert:prod
+    settings:
+      depth: 0
+      tags: false
+      # partial-clone (plugin-git default ON) forces a shallow clone and silently
+      # ignores `depth: 0`; a shallow graft severs ancestry so master-versions'
+      # `git describe` finds no tag. `partial: false` + `depth: 0` = real full clone.
+      partial: false
+
+when:
+  - event: pull_request
+
+steps:
+  - name: run python checks
+    image: harbor.devopstashtiot.page/base/uv/0.11.29/python-312:v1.0.0
+    commands:
+      - uv sync
+      - uv run pytest --cov=app --cov-report=xml --junitxml=test-report.xml
+      - uv run ruff check .
+      - uv run ruff format --check .
+
+  - name: SonarQube
+    image: harbor.devopstashtiot.page/plugins/sonarqube:v1.0.0
+    settings:
+      sonar_host: https://sonarqube.devopstashtiot.page
+      sonar_token:
+        from_secret: sonar_token
+      extra_properties: -Dsonar.projectVersion=$(if [ -s new-tags.txt ]; then cat new-tags.txt | tr -d '\n'; else cat tags.txt | tr -d '\n'; fi)
+
+  - name: Run release
+    image: netanelzucaim123/master-versions:v1.0.5
+    environment:
+      PLUGIN_BASE_PATH: "."
+      PLUGIN_OUTPUT_TAGS_FILE: "new_tags.txt"
+      PLUGIN_BITBUCKET_TOKEN:
+        from_secret: bitbucket_token
+      PLUGIN_MESSAGE: "${MESSAGE}"
+      PLUGIN_VERBOSE: 2
+      PLUGIN_CHANGELOG_LEVEL: "0"
+
+  - name: Build and push image
+    image: harbor.devopstashtiot.page/plugins/buildah-master-versions:latest
+    privileged: true
+    environment:
+      PLUGIN_BASE_PATH: "."
+      PLUGIN_REGISTRY: "harbor.devopstashtiot.page"
+      PLUGIN_REPO: "docker-dev-local/devops-api"
+      PLUGIN_TAGS_FILE: "new_tags.txt"
+      PLUGIN_ALIASES: "prod"
+      PLUGIN_USERNAME: "admin"
+      PLUGIN_PASSWORD:
+        from_secret: harbor_password

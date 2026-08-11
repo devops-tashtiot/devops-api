@@ -4,7 +4,7 @@ Manages Bitbucket Server projects and Active Directory user directory synchronis
 
 ## Base path
 
-`/api/devops/v1/bitbucket`
+`/api/v1/devops/bitbucket`
 
 ---
 

@@ -7,7 +7,7 @@ class ArgocdConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     API_PREFIX: str = Field(
-        default="/api/devops/v1/argocd",
+        default="/api/v1/devops/argocd",
         description="API prefix for api exposure",
     )
 

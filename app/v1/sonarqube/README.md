@@ -4,7 +4,7 @@ Manages SonarQube groups with full administrator permissions (global scope + Def
 
 ## Base path
 
-`/api/devops/v1/sonarqube`
+`/api/v1/devops/sonarqube`
 
 ---
 

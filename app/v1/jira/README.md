@@ -4,7 +4,7 @@ Manages Jira Server/Data Center projects with admin assignment, and Active Direc
 
 ## Base path
 
-`/api/devops/v1/jira`
+`/api/v1/devops/jira`
 
 ---
 

@@ -5,7 +5,7 @@ Each consumer config is a YAML file committed to `{env}/consumers/{name}/config.
 
 ## Base path
 
-`/api/devops/v1/argocd`
+`/api/v1/devops/argocd`
 
 ---
 

@@ -4,7 +4,7 @@ from pydantic import Field
 class ArtifactoryConfig(BaseSettings):
 
     API_PREFIX: str = Field(
-        default="/api/devops/v1/artifactory",
+        default="/api/v1/devops/artifactory",
         description="API prefix for api exposure",
     )
     API_TAGS: list[str] = Field(

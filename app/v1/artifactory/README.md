@@ -4,7 +4,7 @@ Manages JFrog Artifactory projects — creation with admin assignment and storag
 
 ## Base path
 
-`/api/devops/v1/artifactory`
+`/api/v1/devops/artifactory`
 
 ---
 

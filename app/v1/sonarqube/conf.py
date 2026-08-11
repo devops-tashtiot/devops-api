@@ -7,7 +7,7 @@ class SonarqubeConfig(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     API_PREFIX: str = Field(
-        default="/api/devops/v1/sonarqube",
+        default="/api/v1/devops/sonarqube",
         description="API prefix for api exposure",
     )
 

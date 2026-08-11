@@ -33,7 +33,7 @@ import pytest
 CONFLUENCE_URL = os.environ.get("CONFLUENCE_URL", "http://localhost:8090")
 API_URL = os.environ.get("API_URL", "http://localhost:5001")
 MINIO_URL = os.environ.get("MINIO_URL", "http://localhost:9100")
-API_PREFIX = "/api/devops/v1/confluence"
+API_PREFIX = "/api/v1/devops/confluence"
 CONFLUENCE_USER = os.environ.get("CONFLUENCE_USER", "admin")
 CONFLUENCE_PASS = os.environ.get("CONFLUENCE_PASS", "12345678")
 # admin_user schema pattern is ^[a-z0-9_\-]+$ — pick an account that actually exists on the

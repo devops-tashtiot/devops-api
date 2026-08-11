@@ -35,19 +35,10 @@ create_project
 `admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided, and
 both can be set together (assigns both a user and a group admin).
 
-**2026-07-20 — `validate_admin_principals` is now actually implemented** (`operations.py`).
-This flow diagram used to describe an aspirational design with no code behind it — confirmed via
-`grep` across the module, zero hits outside this doc. Found while writing additional test
-coverage for this module; now matches reality: `_assert_user_exists`/`_assert_group_exists` call
-`GET .../admin/users?filter=`/`GET .../admin/groups?filter=` and raise `404` if the `values`
-array comes back empty, *before* `create_project` runs.
-
 On unexpected failure after project creation: rollback via `delete_project(key)`. The rollback
 itself is wrapped in its own try/except — a failed rollback is logged, not raised, so it can
 never mask or crash past the original error. The route always returns a proper `500`
-`ExceptionResponse` on this path now; it used to fall through with no `return` at all (the
-existing unit test for this path never asserted on the response, which is how that went
-unnoticed until now).
+`ExceptionResponse` on this path (not a bare fallthrough with no response body).
 
 ## Bitbucket REST API calls
 
@@ -59,47 +50,36 @@ Body: {"key": key, "name": name, "description": description, "public": <caller-s
 → 201
 ```
 
-**Correction (2026-07-20):** this used to say `public: false` is hardcoded and not exposed to
-callers — that was stale/wrong. `ProjectSpec.public` (`schemas.py`) is a real, caller-settable
-`bool` field defaulting to `False`; `create_project` (`operations.py`) passes `payload.public`
-straight through unmodified. A caller that sends `"public": true` really does create a public
-Bitbucket project — confirmed live. Found while chasing a reported doc/code mismatch; the code
-was correct, only the doc was wrong.
+`ProjectSpec.public` is a real, caller-settable `bool` field (default `False`) — `create_project`
+passes it through to Bitbucket unmodified. Sending `"public": true` really does create a public
+project.
 
 ### Delete project — cascades repo deletion first
 
-Bitbucket **refuses to delete a project that still contains repositories** — confirmed live:
+Bitbucket **refuses to delete a project that still contains repositories**:
 `DELETE /rest/api/latest/projects/{key}` on a project with any repo inside returns `409` with
 `{"errors":[{"message":"The project \"{key}\" cannot be deleted because it has repositories.",
-"exceptionName":"com.atlassian.bitbucket.IntegrityException"}]}`. This is unrelated to repo
-size — it happens even for a project containing a single empty repo.
+"exceptionName":"com.atlassian.bitbucket.IntegrityException"}]}` — regardless of repo size, even
+a single empty repo triggers it.
 
-`delete_project` therefore lists all repos under the project first and deletes each one
-before deleting the project itself:
+`delete_project` therefore lists all repos under the project first and deletes each one before
+deleting the project itself:
 
 ```
 GET    /rest/api/latest/projects/{key}/repos?start={start}&limit=100   (paginated via list_repos)
   → {"values": [{"slug": ..., ...}], "isLastPage": bool, "nextPageStart": int}
 DELETE /rest/api/latest/projects/{key}/repos/{repo_slug}    for each repo
-  → 202 (Accepted — confirmed live this is genuinely asynchronous under the hood; Bitbucket
-     purges the underlying git data in the background)
+  → 202 (Accepted — genuinely asynchronous under the hood; git data purge happens in background)
 DELETE /rest/api/latest/projects/{key}
   → 204
 ```
 
-No polling is needed between the repo deletes and the project delete: confirmed live with a
-real 200MB git repo — even though the repo delete itself returns `202`, an immediate `GET` on
-that repo already 404s, and the project delete that follows immediately succeeds with `204`.
-Bitbucket's REST-visible state (both repo and project) flips to "gone" synchronously with the
-API response; only the actual on-disk data purge happens asynchronously in the background.
-
-### Delete project — no lag on the project delete itself, confirmed at scale
-
-`DELETE /rest/api/latest/projects/{key}` (once the project has no repos left) returns `204`,
-and immediate `GET`s on the same project 404 right away — confirmed live with up to 20
-consecutive immediate polls, both against an empty project and one that previously held a
-200MB repo. Unlike Confluence's space delete (see `app/v1/confluence/CLAUDE.md`), there is no
-accepted-but-not-yet-gone race here, so `delete_project` does not poll for confirmation.
+No polling is needed between the repo deletes and the project delete: even though a repo delete
+returns `202`, an immediate `GET` on that repo already 404s, and the project delete that follows
+immediately succeeds with `204`. Bitbucket's REST-visible state (both repo and project) flips to
+"gone" synchronously with the API response; only the on-disk data purge is asynchronous.
+`delete_project` does not poll for confirmation (unlike Confluence's space delete — see
+`app/v1/confluence/CLAUDE.md` — which has a real accepted-but-not-yet-gone race).
 
 ### Assign user admin — pre-check + `PUT`
 
@@ -133,51 +113,39 @@ Header: Accept: application/json
 → 200, {"directory": [{"name": ..., "link": [{"href": "https://.../directory/{id}", "rel": "self"}], "synchronisation"?: {...}}, ...]}
 ```
 
-Confirmed live against Bitbucket Data Center 10.2.2 with a real AD-connected directory.
-`GET /rest/api/1.0/admin/user-directories` (the Bitbucket-native admin REST API) also works
-and returns a friendlier `{"name", "type", "isActive", "description"}` shape, but **never
-exposes an id field at all** — not even embedded in a link — so it cannot support the sync
-operation below. Bitbucket shares the same Atlassian Crowd-embedded REST resource Jira and
-Confluence use (see `app/v1/jira/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`); its shape
-matches Confluence's exactly (`directory`/`link`, singular), not Jira's (`directories`/
-`links`, plural) — same underlying module, inconsistent JSON key pluralization across
-products. Neither response includes an `id` field on each directory object; the numeric ID
-only exists embedded in `link[0].href` (e.g. `.../directory/32769` → `32769`), which is what
-`sync_user_directory` parses out.
+Confirmed against Bitbucket Data Center 10.2.2 with a real AD-connected directory.
+`GET /rest/api/1.0/admin/user-directories` (the Bitbucket-native admin REST API) also works and
+returns a friendlier `{"name", "type", "isActive", "description"}` shape, but **never exposes an
+id field at all** — not even embedded in a link — so it cannot support the sync operation below.
+Bitbucket shares the same Atlassian Crowd-embedded REST resource Jira and Confluence use (see
+`app/v1/jira/CLAUDE.md`, `app/v1/confluence/CLAUDE.md`); its shape matches Confluence's exactly
+(`directory`/`link`, singular), not Jira's (`directories`/`links`, plural) — same underlying
+module, inconsistent JSON key pluralization across products. The numeric ID only exists embedded
+in `link[0].href` (e.g. `.../directory/32769` → `32769`), which `sync_user_directory` parses out.
 
 ### Sync user directory — unsupported, `sync_user_directory` always raises `501`
 
-Bitbucket Data Center has **no supported way to trigger a directory sync on demand**, at all.
-This was investigated thoroughly live against Bitbucket Data Center 10.2.2 before concluding
-that (see git history for the full back-and-forth):
+Bitbucket Data Center has **no supported way to trigger a directory sync on demand**. Investigated
+thoroughly against Bitbucket Data Center 10.2.2 before concluding this:
 
 1. `POST /rest/crowd/latest/directory/{id}/synchronise` — the path Jira/Confluence use
-   successfully for the same shared Crowd-embedded resource — **404s on Bitbucket even with
-   the correct connector directory ID**. Confirmed on a real AD-connector directory, not a
-   guess against the wrong directory.
-2. `POST /rest/api/1.0/admin/user-directories/{id}/sync` (the old, wrong path this code used
-   to call) also 404s with a real ID.
-3. The Bitbucket **web UI** does have a working "Synchronize" action, found by fetching the
-   admin console HTML directly: `POST /plugins/servlet/embedded-crowd/directories/sync?directoryId={id}`.
-   This is an internal servlet, not a documented/versioned REST endpoint. It accepts Basic
-   Auth and always returns `302` — but **that response is not a reliable success signal**:
-   - The first live test appeared to work (directory's `lastStartTime` advanced).
-   - Every subsequent call — verified independently via tight API polling (`currentStartTime`
-     never went non-zero, `lastStartTime` never advanced, over 90+ seconds) **and** by
-     visually checking the Bitbucket admin UI directly — produced **zero effect**, despite
-     an identical `302` response each time.
-   - Conclusion: the one apparent success coincided with Bitbucket's own internal automatic
-     sync schedule (`lastStartTime` values observed exactly ~30 minutes apart —
-     `9:11 → 9:41 → 10:11 → 10:41`), not with any manual trigger. The servlet likely
-     silently no-ops/throttles repeat requests with no way to tell from the response.
+   successfully for the same shared Crowd-embedded resource — **404s on Bitbucket** even with the
+   correct connector directory ID.
+2. `POST /rest/api/1.0/admin/user-directories/{id}/sync` also 404s with a real ID.
+3. The Bitbucket **web UI** does have a working "Synchronize" action, reachable via an
+   undocumented internal servlet: `POST /plugins/servlet/embedded-crowd/directories/sync?directoryId={id}`.
+   It accepts Basic Auth and always returns `302` — but that response is **not a reliable success
+   signal**: repeat calls verified via tight API polling (`currentStartTime`/`lastStartTime`
+   unchanged over 90+ seconds) and the admin UI directly produced zero effect despite an identical
+   `302` each time. The one apparent success coincided with Bitbucket's own internal automatic
+   sync schedule (~30 minutes apart), not the manual trigger — the servlet likely silently
+   no-ops/throttles repeats with no way to tell from the response.
 
-Building this into devops-api would report `"status": "successful"` on requests that almost
-always silently did nothing — worse than not having the feature. `sync_user_directory`
-therefore raises `HTTPException(501, ...)` unconditionally, without calling Bitbucket at all.
-`GET /user-dirs` is unaffected and still works correctly (see above) — only the sync/trigger
-side is unsupported. If Atlassian ever ships this (tracked publicly since 2014 in
-[BSERV-5108](https://jira.atlassian.com/browse/BSERV-5108), still open as of this writing),
-revisit this.
+Reporting `"successful"` on a request that almost always silently does nothing would be worse
+than not having the feature, so `sync_user_directory` raises `HTTPException(501, ...)`
+unconditionally without calling Bitbucket at all. `GET /user-dirs` is unaffected. Tracked publicly
+upstream since 2014 in [BSERV-5108](https://jira.atlassian.com/browse/BSERV-5108), still open —
+revisit if Atlassian ever ships this.
 
 ## Schema — `ProjectSpec`
 
@@ -186,7 +154,7 @@ revisit this.
 | `key` | `str` | required; `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 | `name` | `str` | required; `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 | `description` | `str` | required; max 1000 chars |
-| `public` | `bool` | optional; default `False`; passed through verbatim to Bitbucket (see below) |
+| `public` | `bool` | optional; default `False`; passed through verbatim to Bitbucket |
 | `admin_user` | `Optional[str]` | `^[a-z0-9]+$`; max 15 chars |
 | `admin_group` | `Optional[str]` | `^[a-zA-Z0-9_\-]+$`; max 255 chars |
 
@@ -203,6 +171,10 @@ Global credentials (`BITBUCKET_USERNAME`, `BITBUCKET_PASSWORD`) and `BITBUCKET_A
 
 ## Testing
 
-Tests mock the injected `bitbucket_client` via `MagicMock` / `AsyncMock`.  
-`conftest.py` builds a throw-away `FastAPI` app with just the Bitbucket router.  
+Tests mock the injected `bitbucket_client` via `MagicMock` / `AsyncMock`.
+`conftest.py` builds a throw-away `FastAPI` app with just the Bitbucket router.
 `POST /` triggers up to 3 calls: create (`post`) + user assign (`put`) + group assign (`put`).
+
+In the e2e file, always use a `yield`-based cleanup fixture, not a plain pre-test call — a plain
+call once left real `E2ETEST`/`E2EREPOTEST` projects stuck in Bitbucket after an unrelated auth
+failure partway through a test.

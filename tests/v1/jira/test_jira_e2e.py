@@ -12,7 +12,7 @@ import pytest
 #   pytest tests/v1/jira/test_jira_e2e.py -v -m integration
 JIRA_URL = os.environ.get("JIRA_URL", "http://localhost:8080")
 API_URL = os.environ.get("API_URL", "http://localhost:5002")
-PREFIX = "/api/devops/v1/jira"
+PREFIX = "/api/v1/devops/jira"
 JIRA_USER = os.environ.get("JIRA_USER", "admin")
 JIRA_PASS = os.environ.get("JIRA_PASS", "12345678")
 

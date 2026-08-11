@@ -7,7 +7,7 @@ import pytest
 # stack (defaults below) or a real deployed environment.
 SONARQUBE_URL = os.environ.get("SONARQUBE_URL", "http://localhost:9000")
 API_URL = os.environ.get("API_URL", "http://localhost:5001")
-PREFIX = "/api/devops/v1/sonarqube"
+PREFIX = "/api/v1/devops/sonarqube"
 ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
 ADMIN_PASS = os.environ.get("ADMIN_PASS", "SonarqubeDevops1!")
 GROUP_NAME = "e2e-admin-group"

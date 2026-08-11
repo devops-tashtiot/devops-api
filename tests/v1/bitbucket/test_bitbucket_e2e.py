@@ -14,7 +14,7 @@ import pytest
 #   pytest tests/v1/bitbucket/test_bitbucket_project_e2e.py -v -m integration
 BITBUCKET_URL = os.environ.get("BITBUCKET_URL", "http://localhost:7990")
 API_URL = os.environ.get("API_URL", "http://localhost:5002")
-PREFIX = "/api/devops/v1/bitbucket"
+PREFIX = "/api/v1/devops/bitbucket"
 BITBUCKET_USER = os.environ.get("BITBUCKET_USER", "nati")
 BITBUCKET_PASS = os.environ.get("BITBUCKET_PASS", "12345678")
 

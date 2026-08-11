@@ -4,7 +4,7 @@ Manages Confluence spaces, plugins, space export/import, and Active Directory us
 
 ## Base path
 
-`/api/devops/v1/confluence`
+`/api/v1/devops/confluence`
 
 ---
 

@@ -5,7 +5,7 @@ from pydantic import Field
 class ConfluenceConfig(BaseSettings):
 
     API_PREFIX: str = Field(
-        default="/api/devops/v1/confluence",
+        default="/api/v1/devops/confluence",
         description="API prefix for api exposure",
     )
 

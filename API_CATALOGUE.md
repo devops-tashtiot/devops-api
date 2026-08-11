@@ -6,7 +6,7 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ## Bitbucket — `app/v1/bitbucket/`
 
-**Prefix:** `/api/devops/v1/bitbucket`  
+**Prefix:** `/api/v1/devops/bitbucket`  
 **Auth:** Basic auth (username + password)  
 **Base endpoint:** `/rest/api/latest`
 
@@ -28,7 +28,7 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ## Confluence — `app/v1/confluence/`
 
-**Prefix:** `/api/devops/v1/confluence`  
+**Prefix:** `/api/v1/devops/confluence`  
 **Auth:** Basic auth  
 **Base endpoints:** `/rest/api/latest`, `/rest/plugins/1.0` (UPM), `/rest/crowd/latest` (user dirs), `/rest/api/backup-restore` (import/export)
 
@@ -64,7 +64,7 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ## Jira — `app/v1/jira/`
 
-**Prefix:** `/api/devops/v1/jira`  
+**Prefix:** `/api/v1/devops/jira`  
 **Auth:** Basic auth  
 **Base endpoint:** `/rest/api/latest`
 
@@ -85,7 +85,7 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ## SonarQube — `app/v1/sonarqube/`
 
-**Prefix:** `/api/devops/v1/sonarqube`  
+**Prefix:** `/api/v1/devops/sonarqube`  
 **Auth:** Basic auth  
 **Base endpoint:** `/api`
 
@@ -109,7 +109,7 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ## Artifactory — `app/v1/artifactory/`
 
-**Prefix:** `/api/devops/v1/artifactory`  *(note: `v1` not `latest`)*  
+**Prefix:** `/api/v1/devops/artifactory`  *(note: `v1` not `latest`)*  
 **Auth:** Bearer token  
 **Base endpoint:** `/access/api/v1`
 
@@ -135,7 +135,7 @@ All modules live under `app/v1/<service>/`. Each follows the four-file conventio
 
 ## ArgoCD — `app/v1/argocd/`
 
-**Prefix:** `/api/devops/v1/argocd`  
+**Prefix:** `/api/v1/devops/argocd`  
 **Auth:** Git connector (`tashtiot_apis_library.Git`) for gitops operations; ArgoCD API token in payload for cluster-secret operations  
 **Base path (git):** `consumers/` directory in gitops repo
 

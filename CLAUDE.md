@@ -239,7 +239,7 @@ import pytest
 
 SERVICE_URL = os.environ.get("<SERVICE>_URL", "http://localhost:<port>")
 API_URL = os.environ.get("API_URL", "http://localhost:5002")
-PREFIX = "/api/devops/v1/<service>"
+PREFIX = "/api/v1/devops/<service>"
 
 @pytest.fixture(scope="module")
 def svc():
@@ -484,7 +484,7 @@ from pydantic_settings import BaseSettings
 from pydantic import Field
 
 class <Service>Config(BaseSettings):
-    API_PREFIX: str = Field(default="/api/devops/v1/<service>", description="API prefix for api exposure")
+    API_PREFIX: str = Field(default="/api/v1/devops/<service>", description="API prefix for api exposure")
     <SERVICE>_ENDPOINT: str = Field(default="/rest/api/latest", description="API endpoint for <service>")  # adjust base path
     API_TAGS: list[str] = Field(default=["v1 - <Service> Operations"], description="OpenAPI tag")
 

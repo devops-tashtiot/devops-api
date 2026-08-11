@@ -14,7 +14,7 @@ import yaml
 #   pytest tests/v1/sonarqube/test_sonarqube_consumer_e2e.py -v -m integration
 BITBUCKET_URL = os.environ.get("BITBUCKET_URL", "http://localhost:7990")
 API_URL = os.environ.get("API_URL", "http://localhost:5001")
-PREFIX = "/api/devops/v1/sonarqube"
+PREFIX = "/api/v1/devops/sonarqube"
 BITBUCKET_USER = os.environ.get("BITBUCKET_USER", "nati")
 BITBUCKET_PASS = os.environ.get("BITBUCKET_PASS", "12345678")
 

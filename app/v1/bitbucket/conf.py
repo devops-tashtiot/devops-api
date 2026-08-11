@@ -4,7 +4,7 @@ from pydantic import Field
 class BitbucketConfig(BaseSettings):
     
     API_PREFIX: str = Field(
-        default="/api/devops/v1/bitbucket",
+        default="/api/v1/devops/bitbucket",
         description="API prefix for api exposure",
     )
     API_TAGS: list[str] = Field(
