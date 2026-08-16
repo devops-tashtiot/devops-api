@@ -585,8 +585,10 @@ def get_v1_<service>_router(<service>_client: Any):
 **5. `app/global_conf.py`** — add four fields per new service inside `DevopsStaticSettings`:
 `ENABLE_<SERVICE>_API` (bool, default `True`), `<SERVICE>_API_URL`, `<SERVICE>_USERNAME`,
 `<SERVICE>_PASSWORD`. Use `auth=` (basic auth) for services like Bitbucket/Confluence/Jira/
-SonarQube/Artifactory; use `headers={"Authorization": f"Bearer {token}"}` only for genuinely
-token-based services (e.g. ArgoCD/Git connectors via the internal library).
+SonarQube; use `headers={"Authorization": f"Bearer {token}"}` for genuinely token-based
+services instead (e.g. ArgoCD/Git connectors via the internal library, or Artifactory — its
+Access API rejects Basic auth outright, see `app/v1/artifactory/CLAUDE.md`). Confirm which
+auth method the target service's API actually accepts before assuming Basic auth works.
 
 **6. `app/main.py`** — import the router factory, then wire it in `create_app()`:
 
@@ -605,7 +607,7 @@ if global_config.ENABLE_<SERVICE>_API:
 
 | Module        | Auth type  | Endpoint base            | Resource  | Operations                              |
 |---------------|------------|--------------------------|-----------|------------------------------------------|
-| `artifactory` | Basic auth | `/access/api/v1`       | project   | increase storage quota                   |
+| `artifactory` | Bearer token (Identity/reference token — Access API rejects Basic auth) | `/access/api/v1` | project | create, assign admin, increase storage quota, permissions, Xray vuln update |
 | `bitbucket`   | Basic auth | `/rest/api/latest`       | project   | create, delete, assign admin; sync user dirs (501) |
 | `confluence`  | Basic auth | `/rest/api/latest`       | space     | create, delete, assign user/group admin; plugin install/uninstall; space import |
 | `jira`        | Basic auth | `/rest/api/latest`       | project   | create (`POST /`), delete (`DELETE /{key}`), assign admin; sync user dirs (501) |

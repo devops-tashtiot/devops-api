@@ -25,10 +25,9 @@ def create_app() -> FastAPI:
     if global_config.ARTIFACTORY_ENABLE_API:
         artifactory_client = BaseAPI(
             global_config.ARTIFACTORY_API_URL,
-            auth=(
-                global_config.ARTIFACTORY_USERNAME,
-                global_config.ARTIFACTORY_PASSWORD,
-            ),
+            headers={
+                "Authorization": f"Bearer {global_config.ARTIFACTORY_TOKEN}",
+            },
         ).client
         app.include_router(get_v1_artifactory_router(artifactory_client))
 

@@ -2,10 +2,15 @@
 
 ## How the client is built
 
-`main.py` constructs a single `BaseAPI` client with basic auth from `global_config` (same pattern as Bitbucket/Confluence/Jira/SonarQube):
+Unlike Bitbucket/Confluence/Jira/SonarQube (Basic auth), `main.py` constructs the `BaseAPI`
+client with a Bearer token header — Artifactory's Access API rejects Basic auth outright (see
+"Auth: Bearer token, not Basic" below):
 
 ```
-BaseAPI(global_config.ARTIFACTORY_API_URL, auth=(global_config.ARTIFACTORY_USERNAME, global_config.ARTIFACTORY_PASSWORD)).client
+BaseAPI(
+    global_config.ARTIFACTORY_API_URL,
+    headers={"Authorization": f"Bearer {global_config.ARTIFACTORY_TOKEN}"},
+).client
 ```
 
 Passed into `get_v1_artifactory_router(artifactory_client)` at startup — no per-request reconstruction.
@@ -167,29 +172,37 @@ The archive must be pre-uploaded to the `platform-devops-team/xray-vulnerability
 | `ARTIFACTORY_ENDPOINT` | `/access/api/v1` | Artifactory Access REST API base path |
 | `ARTIFACTORY_XRAY_ENDPOINT` | `/xray/api/v1` | Xray REST API base path |
 
-Global credentials (`ARTIFACTORY_USERNAME`, `ARTIFACTORY_PASSWORD`), URL (`ARTIFACTORY_API_URL`), LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`), and `ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL` live in `global_conf.py`.
+Global Bearer token (`ARTIFACTORY_TOKEN`), URL (`ARTIFACTORY_API_URL`), LDAP setting name (`ARTIFACTORY_LDAP_SETTING_NAME`), and `ARTIFACTORY_S3_XRAY_UPDATES_BASE_URL` live in `global_conf.py`.
 
-## Known issue (unresolved) — Basic auth doesn't work against Artifactory's Access API
+## Auth: Bearer token, not Basic
 
-This module's client uses Basic auth (same pattern as every other module), but Artifactory's
-Access API (`/access/api/v1/*` — everything this module calls) rejects Basic auth outright:
-`401 Unsupported authentication method Basic`, confirmed on every endpoint including the
-token-minting endpoint itself — so there's no way to bootstrap a Bearer token via Basic auth
-either. Basic auth does work on the older classic `/artifactory/api/*` REST API, but that's not
-what this module targets. Confirmed live by calling both APIs directly against the
-`artifactory-0` pod, bypassing all routing/TLS.
+Artifactory's Access API (`/access/api/v1/*` — everything this module calls) rejects Basic auth
+outright: `401 Unsupported authentication method Basic`, confirmed on every endpoint including
+the token-minting endpoint itself, so there's no way to bootstrap a Bearer token via Basic auth
+either. This has been true since Artifactory 7.12 and is a hardcoded Access-service design
+decision, not a configurable setting — checked the classic system configuration and the Access
+API's own config surface live (2026-08-16) for a toggle; the only Basic-auth-related settings
+that exist (`buildGlobalBasicReadAllowed`/`buildGlobalBasicReadForAnonymous`) control anonymous
+read access to build info on the *classic* repo API and are unrelated. Basic auth does work fine
+on the classic `/artifactory/api/*` REST API, but that's not what this module targets.
 
-Separately (and independently), `ARTIFACTORY_USERNAME`/`ARTIFACTORY_PASSWORD` are still the dev
-placeholder defaults (`svc-lcl-artifactory-api`/`sheker`) in the live deployment — unlike every
-other tool, these were never overridden in `devtools-definition`. Fixing that alone will not fix
-the module; both issues need addressing.
+**Fix:** this module authenticates with `Authorization: Bearer <token>` using
+`ARTIFACTORY_TOKEN` (`global_conf.py`) — a reference/identity token generated through
+Artifactory's own Admin UI (User Profile → Generate Identity Token), since there's no API path
+to mint one that's valid against the Access API using only Basic-auth admin credentials (the
+classic API's legacy token-mint endpoint, `POST /artifactory/api/security/token`, does accept
+Basic auth, but a token minted there defaults to an audience scoped to the Artifactory service
+only — `401 Invalid token, audience` against the Access API — and widening its audience requires
+a `refreshable=true` + explicit-expiry token mint that isn't a meaningfully simpler path than
+just generating an Identity Token via the UI). Stored in SSM at
+`/devtools/artifactory/api-token`, synced into `devtools-definition`'s
+`devops-api-secrets` via the same `vault.secrets` ExternalSecret pattern as `GIT_TOKEN`. Not
+GitOps-managed — rotate with a manual `aws ssm put-parameter --overwrite`, same as
+`/devtools/bitbucket/api-token`.
 
-**Real fix likely needed:** switch this module to Bearer-token auth against the Access API (e.g.
-a long-lived Identity Token generated via Artifactory's Admin UI — User Profile → Generate
-Identity Token — stored in SSM like other secrets, with `operations.py` sending `Authorization:
-Bearer <token>` instead of Basic auth for this module specifically). Worth checking first whether
-Artifactory has a platform-level toggle to re-enable Basic auth on the Access API (some JFrog
-Platform versions expose this under Administration → Access Tokens) as a simpler alternative.
+Confirmed live (2026-08-16): `Authorization: Bearer <reference-token>` against
+`GET /access/api/v1/projects` on `artifactory-0` → `200`, where the equivalent Basic-auth call
+→ `401`.
 
 ## Testing
 

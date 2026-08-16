@@ -12,14 +12,12 @@ class DevopsStaticSettings(BaseSettings):
         default=True,
     )
 
-    ARTIFACTORY_PASSWORD: str = Field(
-        description="ARTIFACTORY username's password",
+    ARTIFACTORY_TOKEN: str = Field(
+        description="Artifactory reference/identity token — the Access API "
+        "(/access/api/v1/*, everything this module calls) rejects Basic auth "
+        "outright, so this module authenticates with Authorization: Bearer "
+        "instead of ARTIFACTORY_USERNAME/PASSWORD",
         default="sheker",
-    )
-
-    ARTIFACTORY_USERNAME: str = Field(
-        description="ARTIFACTORY username",
-        default="svc-lcl-artifactory-api",
     )
 
     ARTIFACTORY_LDAP_SETTING_NAME: str = Field(
