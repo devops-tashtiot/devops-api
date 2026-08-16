@@ -38,6 +38,19 @@ At least one of `admin_user` / `admin_group` must be provided.
 
 On unexpected failure: rollback via `delete_project(project_key)`.
 
+**Live-environment quirks (confirmed 2026-08-16, after the Bearer-auth fix):**
+- Artifactory rejects assigning the **platform admin account** as an explicit project
+  member: `400 User 'admin' is a Platform Administrator and cannot be explicitly added as a
+  Project Member`. Not a bug in this module — a real Artifactory rule. Project creation
+  itself still succeeds; only the subsequent `assign_admin_user` call 400s (and since that's
+  an `HTTPException`, not a bare exception, there's no rollback — the project persists
+  unassigned). Use a real non-admin user for `admin_user` against this platform.
+- `admin_group` was tried as a workaround and also failed: `400 Invalid role assignment;
+  role name project_admin`. This platform's Artifactory is deployed intentionally unlicensed
+  (see `devtools-labs/docs/post-devtools-implementation/artifactory/README.md`), so this is
+  likely a Pro+-license-gated project-role feature — not verified further, since it's outside
+  this fix's scope. Revisit once a license is applied.
+
 **Key derived:** `project_key = name.lower().replace(" ", "-").replace("_", "-")` — computed by `ProjectSpec.project_key` property.
 
 ## Artifactory REST API calls

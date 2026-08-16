@@ -22,6 +22,16 @@ ARTIFACTORY_TOKEN = os.environ.get("ARTIFACTORY_TOKEN", "")
 PREFIX = "/api/v1/devops/artifactory"
 
 PROJECT_NAME = os.environ.get("E2E_PROJECT_NAME", "e2e-test-project")
+# Unlike Bitbucket/Confluence/Jira, "admin" is NOT a safe default here — confirmed live
+# (2026-08-16): Artifactory rejects assigning the platform admin account as an explicit
+# project member ("User 'admin' is a Platform Administrator and cannot be explicitly added
+# as a Project Member"), so admin-assignment tests 400 with the default unless overridden
+# to a real non-admin user. This lab instance currently seeds only "admin"/"anonymous" — no
+# such user exists yet. Set E2E_ADMIN_USER to a real non-admin username to make these tests
+# pass. (admin_group was tried as an alternative and also fails right now — "Invalid role
+# assignment; role name `project_admin`" — likely gated behind the Artifactory Pro+ license
+# this instance intentionally doesn't have yet; see devtools-labs/docs/
+# post-devtools-implementation/artifactory/README.md's License section.)
 ADMIN_USER = os.environ.get("E2E_ADMIN_USER", "admin")
 # Default project role shipped with every JFrog Platform instance — no setup required.
 ROLE_NAME = os.environ.get("E2E_ROLE_NAME", "Developer")
