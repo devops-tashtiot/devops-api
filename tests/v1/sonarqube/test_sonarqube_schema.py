@@ -24,14 +24,16 @@ def test_empty_name_raises():
         GroupSpec(consumer_name="test-consumer", name="")
 
 
-def test_name_with_spaces_raises():
-    with pytest.raises(ValidationError):
-        GroupSpec(consumer_name="test-consumer", name="invalid name")
+def test_name_with_spaces_is_valid():
+    # GroupSpec.name has no pattern anymore — SonarQube group names aren't artificially
+    # constrained (they're not a hostname, unlike consumer_name).
+    spec = GroupSpec(consumer_name="test-consumer", name="invalid name")
+    assert spec.name == "invalid name"
 
 
-def test_name_with_special_chars_raises():
-    with pytest.raises(ValidationError):
-        GroupSpec(consumer_name="test-consumer", name="group@domain")
+def test_name_with_special_chars_is_valid():
+    spec = GroupSpec(consumer_name="test-consumer", name="group@domain")
+    assert spec.name == "group@domain"
 
 
 def test_name_too_long_raises():
@@ -52,14 +54,21 @@ def test_consumer_name_with_special_chars_raises():
         GroupSpec(consumer_name="invalid@consumer", name="check")
 
 
+def test_consumer_name_starting_with_hyphen_raises():
+    # consumer_name is a DNS label (^[a-z0-9]([-a-z0-9]*[a-z0-9])?$) — must start and end
+    # with an alphanumeric.
+    with pytest.raises(ValidationError):
+        GroupSpec(consumer_name="-test-consumer", name="check")
+
+
 def test_consumer_name_too_long_raises():
     with pytest.raises(ValidationError):
-        GroupSpec(consumer_name="a" * 256, name="check")
+        GroupSpec(consumer_name="a" * 64, name="check")
 
 
-def test_consumer_name_at_max_length_valid():
-    spec = GroupSpec(consumer_name="a" * 255, name="check")
-    assert len(spec.consumer_name) == 255
+def test_consumer_name_at_max_length_63_valid():
+    spec = GroupSpec(consumer_name="a" * 63, name="check")
+    assert len(spec.consumer_name) == 63
 
 
 # ── SonarQubeConsumerSpec ──────────────────────────────────────────────────────
@@ -90,6 +99,14 @@ class TestSonarQubeConsumerSpec:
     def test_name_with_special_chars_raises(self):
         with pytest.raises(ValidationError):
             SonarQubeConsumerSpec(name="bad name!")
+
+    def test_name_at_max_length_63_is_valid(self):
+        spec = SonarQubeConsumerSpec(name="a" * 63)
+        assert spec.name == "a" * 63
+
+    def test_name_over_max_length_64_raises(self):
+        with pytest.raises(ValidationError):
+            SonarQubeConsumerSpec(name="a" * 64)
 
     def test_invalid_size_raises(self):
         with pytest.raises(ValidationError):

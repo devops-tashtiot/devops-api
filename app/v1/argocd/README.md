@@ -37,11 +37,11 @@ Creates a consumer config YAML and commits it to the GitOps repo.
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Consumer name — used as directory name under `consumers/` |
+| `name` | string | yes | `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, max 63 | Consumer name — used as directory name under `consumers/` |
 | `environment` | string | yes | one of `ARGOCD_ALLOWED_ENVS` | Target environment |
 | `size` | string | yes | one of `ARGOCD_ALLOWED_SIZES` | ArgoCD instance size |
 | `include_resources` | array of strings | yes | each one of `ARGOCD_ALLOWED_RESOURCES`, min 1 item | Kubernetes resource kinds to include |
-| `ad_admin_group` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Active Directory group to grant admin access |
+| `ad_admin_group` | string | yes | max 255, no pattern | Active Directory group to grant admin access |
 | `extra_roles` | array of strings | no | see [RBAC policy lines](#rbac-policy-lines) | Additional ArgoCD RBAC policy lines (`g`/`p` entries) written verbatim into the consumer config |
 | `config` | object | no | see [ArgoCD config overrides](#argocd-config-overrides) | Optional ArgoCD configuration overrides injected into the consumer's config.yaml |
 
@@ -102,8 +102,8 @@ devops-api authenticates its own call to ArgoCD's API via SSO (a `client_credent
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `chosen_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Prefix for the ArgoCD app name — final name is `{chosen_name}-cluster-secret` |
-| `app_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Consumer name — used to build the target ArgoCD instance URL `https://{app_name}.argocd.{DOMAIN_SUFFIX}` |
+| `chosen_name` | string | yes | `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, max 48 | Prefix for the ArgoCD app name — final name is `{chosen_name}-cluster-secret` |
+| `app_name` | string | yes | `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, max 63 | Consumer name — used to build the target ArgoCD instance URL `https://{app_name}.argocd.{DOMAIN_SUFFIX}` |
 | `application_clusters` | array, min 1 | yes | | Clusters to register — each has `name`, `namespace` (comma-separated for multiple), `address`, `token` (that target cluster's own service-account token — unrelated to ArgoCD auth) |
 
 ---

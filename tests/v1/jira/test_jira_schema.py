@@ -52,9 +52,8 @@ def test_key_too_short_raises():
 
 
 def test_key_two_chars_valid():
-    # The true regex minimum (^[A-Z][A-Z0-9]+$ needs a leading letter plus at least one more
-    # char) — min_length=1 alone would suggest a single char is enough, but it isn't; this
-    # pins down the actual boundary that succeeds.
+    # min_length=2 matches the true regex minimum (^[A-Z][A-Z0-9]+$ needs a leading letter
+    # plus at least one more char) — this pins down the boundary that succeeds.
     spec = ProjectSpec(
         key="AB", name="My Project", description="desc", admin_user="admin"
     )
@@ -104,3 +103,37 @@ def test_admin_group_valid_with_hyphens():
         admin_group="my-group-01",
     )
     assert spec.admin_group == "my-group-01"
+
+
+def test_admin_group_with_spaces_is_valid():
+    # admin_group has no pattern anymore — AD/LDAP group names commonly contain spaces
+    spec = ProjectSpec(
+        key="MYPROJ",
+        name="My Project",
+        description="desc",
+        admin_user="admin",
+        admin_group="Domain Users",
+    )
+    assert spec.admin_group == "Domain Users"
+
+
+def test_admin_user_at_max_length_20_is_valid():
+    spec = ProjectSpec(
+        key="MYPROJ", name="My Project", description="desc", admin_user="a" * 20
+    )
+    assert spec.admin_user == "a" * 20
+
+
+def test_admin_user_over_max_length_21_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(
+            key="MYPROJ", name="My Project", description="desc", admin_user="a" * 21
+        )
+
+
+def test_admin_user_starting_with_digit_raises():
+    # pattern is ^[a-z][a-z0-9\-]*$ — must start with a lowercase letter
+    with pytest.raises(ValidationError):
+        ProjectSpec(
+            key="MYPROJ", name="My Project", description="desc", admin_user="1admin"
+        )

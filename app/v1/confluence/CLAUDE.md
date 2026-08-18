@@ -21,6 +21,19 @@ Passed into `get_v1_confluence_router(confluence_client)` at startup — no per-
 | `POST` | `/space-export/` | Export space to S3 |
 | `POST` | `/space-import/` | Import space from S3 |
 
+## Schema — `SpaceSpec`
+
+| Field | Type | Constraints |
+|---|---|---|
+| `key` | `str` | required; `^[A-Za-z0-9]+$`; max 255 chars |
+| `name` | `str` | required; max 255 chars |
+| `description` | `str` | required; max 1000 chars |
+| `admin_user` | `str \| None` | `^[a-z][a-z0-9\-]*$`; max 20 chars |
+| `admin_group` | `str \| None` | max 255 chars; no `pattern` — group names left unconstrained (see `.claude/skills/schema_update_best_practice.md`) |
+
+`SpaceExportSpec.space_key` uses the same `^[A-Za-z0-9]+$` pattern, max 255 chars (previously
+required an uppercase-first key, max 50).
+
 ## Space create flow (POST /)
 
 ```
@@ -29,7 +42,7 @@ create_space
   → assign_space_group_admin (group)  [if admin_group set]
 ```
 
-`admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided. Both can be provided.
+`admin_user` and `admin_group` are mutually non-exclusive — at least one must be provided. Both can be provided. Despite the function names, the grantee receives the full permission set below, not just admin — see "Space permission calls" below.
 
 ## Delete space — asynchronous, `delete_space` polls until confirmed
 
@@ -45,16 +58,45 @@ right after a "successful" delete could race the background job.
 
 `POST /rest/api/latest/space/{key}/permission` (singular) returns 404 — do **not** use it.
 
-**User admin (3 calls):**
+The `admin_user`/`admin_group` grantee is given **every** permission Confluence's space
+permissions screen exposes as a checkbox, not just admin — `SPACE_PERMISSION_OPERATIONS` in
+`operations.py` is the full (operationKey, targetType) list:
+
+| targetType | operationKey | UI checkbox |
+|---|---|---|
+| space | read | Pages: View |
+| space | export | Space: Export |
+| space | restrict | Restrictions: Add/Delete |
+| space | delete_own | Space: Delete Own |
+| space | delete_mail | Mail: Delete |
+| page | create | Pages: Add |
+| page | delete | Pages: Delete |
+| blogpost | create | Blog: Add |
+| blogpost | delete | Blog: Delete |
+| comment | create | Comments: Add |
+| comment | delete | Comments: Delete |
+| attachment | create | Attachments: Add |
+| attachment | delete | Attachments: Delete |
+| space | administer | Space: Admin |
+
+Each pair is granted with its own `PUT .../grant` call (one operation per call, not batched into
+a single request) — the grant endpoint's ordering-sensitivity was only confirmed for `read`
+before `administer`, so `SPACE_PERMISSION_OPERATIONS` keeps `read` first and `administer` last
+and everything else granted one at a time in between, rather than risk batching multiple ops into
+one `PUT` body.
+
+**User admin (1 + 14 calls):**
 ```
 GET  /rest/api/latest/user?username={admin_user}          → resolve userKey
 PUT  /rest/api/latest/space/{key}/permissions/user/{userKey}/grant   body: [{"operationKey":"read","targetType":"space"}]
+... (one PUT per operation in SPACE_PERMISSION_OPERATIONS) ...
 PUT  /rest/api/latest/space/{key}/permissions/user/{userKey}/grant   body: [{"operationKey":"administer","targetType":"space"}]
 ```
 
-**Group admin (2 calls):**
+**Group admin (14 calls):**
 ```
 PUT  /rest/api/latest/space/{key}/permissions/group/{admin_group}/grant  body: [{"operationKey":"read","targetType":"space"}]
+... (one PUT per operation in SPACE_PERMISSION_OPERATIONS) ...
 PUT  /rest/api/latest/space/{key}/permissions/group/{admin_group}/grant  body: [{"operationKey":"administer","targetType":"space"}]
 ```
 

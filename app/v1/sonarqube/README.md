@@ -41,8 +41,8 @@ Rolls back (deletes the group) automatically if any permission step fails.
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `consumer_name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Identifies the target SonarQube instance |
-| `name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Group name to create in SonarQube |
+| `consumer_name` | string | yes | `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, max 63 | Identifies the target SonarQube instance |
+| `name` | string | yes | max 255, no pattern | Group name to create in SonarQube |
 
 ---
 
@@ -67,7 +67,7 @@ Creates a consumer config YAML and commits it to the GitOps repo at `consumers/{
 
 | Field | Type | Required | Default | Description |
 |---|---|---|---|---|
-| `name` | string | yes | — | Consumer name — used as directory name under `consumers/` |
+| `name` | string | yes | — | Consumer name — used as directory name under `consumers/`; `^[a-z0-9]([-a-z0-9]*[a-z0-9])?$`, max 63 |
 | `plugins_list` | array of strings | no | `null` | S3 URLs to SonarQube plugin `.jar` files. Serialized as a comma-separated string (`url1, url2`) for the ApplicationSet template (`\| quote \| split ", "`). Entries must not contain commas or quotes. |
 | `size` | string | no | `default` | Instance size — `default` omits the key from config.yaml; `medium` and `big` are written explicitly |
 

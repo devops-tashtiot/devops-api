@@ -132,14 +132,25 @@ revisit if Atlassian ever ships this.
 
 | Field | Type | Constraints |
 |---|---|---|
-| `key` | `str` | required; `^[a-zA-Z0-9_\-]+$`; max 255 chars |
-| `name` | `str` | required; `^[a-zA-Z0-9_\-]+$`; max 255 chars |
+| `key` | `str` | required; `^[A-Z][A-Z0-9_]*$`; 2-10 chars |
+| `name` | `str` | required; `^[a-zA-Z0-9_\-\s]+$`; max 80 chars |
 | `description` | `str` | required; max 1000 chars |
 | `public` | `bool` | optional; default `False`; passed through verbatim to Bitbucket |
-| `admin_user` | `Optional[str]` | `^[a-z0-9]+$`; max 15 chars |
-| `admin_group` | `Optional[str]` | `^[a-zA-Z0-9_\-]+$`; max 255 chars |
+| `admin_user` | `str \| None` | `^[a-z][a-z0-9\-]*$`; max 20 chars |
+| `admin_group` | `str \| None` | max 255 chars; no `pattern` — Bitbucket/AD group names are left unconstrained |
 
 Model validator: at least one of `admin_user` / `admin_group` must be provided.
+
+**Aligned to Bitbucket Data Center's actual project-key constraints** (previously the schema
+allowed any 1-255 char alphanumeric string, which was far looser than what Bitbucket itself
+enforces): `key` must start with a letter and be uppercase-only, 2-10 chars — matching
+Bitbucket's own project key rules, not an arbitrary internal convention. `name` now explicitly
+allows whitespace (project display names are free text in Bitbucket's UI). `admin_user` allows
+hyphens now (useful for service-account-style usernames like `svc-devops-tashtiot`) and its max
+length grew from 15 to 20. `admin_group` dropped its `pattern` entirely per the skill's RBAC
+guidance — group names (AD/LDAP-backed) commonly contain spaces and other characters Bitbucket
+does not reject, so constraining them was an artificial restriction not required by the target
+service.
 
 ## Config fields (`conf.py`)
 

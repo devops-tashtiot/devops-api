@@ -18,8 +18,9 @@ JIRA_PASS = os.environ.get("JIRA_PASS", "12345678")
 
 PROJECT_KEY = os.environ.get("E2E_PROJECT_KEY", "E2ETEST")
 PROJECT_NAME = "e2etest"
-# admin_user schema pattern is ^[a-z0-9_\-]+$ — Jira unconditionally requires this as the
-# project lead (see app/v1/jira/CLAUDE.md); there is no admin_group-only path to test here.
+# admin_user schema pattern is ^[a-z][a-z0-9\-]*$, max 20 chars — Jira unconditionally
+# requires this as the project lead (see app/v1/jira/CLAUDE.md); there is no admin_group-only
+# path to test here.
 ADMIN_USER = os.environ.get("E2E_ADMIN_USER", "admin")
 # Must be a group that already exists in Jira (this suite never creates one).
 ADMIN_GROUP = os.environ.get("E2E_ADMIN_GROUP", "devops-tashtiot")
@@ -188,7 +189,9 @@ def test_create_project_nonexistent_admin_user_rejected(
                 "key": key,
                 "name": "e2e-nonexistent-admin",
                 "description": "Should be rejected by Jira — lead does not exist",
-                "admin_user": "definitely-not-a-real-jira-user",
+                # admin_user's schema max_length is 20 — must stay under that while still
+                # being clearly a fake username
+                "admin_user": "not-a-real-user",
             },
         },
     )

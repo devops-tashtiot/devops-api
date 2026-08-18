@@ -5,10 +5,10 @@ from tashtiot_apis_library import OperationRequest
 class SpaceSpec(BaseModel):
     key: str = Field(
         ...,
-        description="Space key — uppercase letters and digits only",
+        description="Space key — alphanumeric characters only",
         min_length=1,
         max_length=255,
-        pattern=r"^[A-Z0-9]+$",
+        pattern=r"^[A-Za-z0-9]+$",
     )
 
     name: str = Field(
@@ -29,8 +29,8 @@ class SpaceSpec(BaseModel):
         default=None,
         description="Username to receive ADMIN permission on the space",
         min_length=1,
-        max_length=50,
-        pattern=r"^[a-z0-9_\-]+$",
+        max_length=20,
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
     admin_group: str | None = Field(
@@ -38,7 +38,6 @@ class SpaceSpec(BaseModel):
         description="Group name to receive ADMIN permission on the space",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-z0-9_\-]+$",
     )
 
     @model_validator(mode="after")
@@ -85,8 +84,8 @@ class SpaceExportSpec(BaseModel):
         ...,
         description="Key of the space to export",
         min_length=1,
-        max_length=50,
-        pattern=r"^[A-Z][A-Z0-9]*$",
+        max_length=255,
+        pattern=r"^[A-Za-z0-9]+$",
     )
 
 

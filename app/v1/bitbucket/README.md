@@ -19,12 +19,12 @@ Rolls back (deletes the project) automatically if any permission step fails.
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `key` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Project key (unique identifier) |
-| `name` | string | yes | `^[a-zA-Z0-9_\-]+$`, max 255 | Project display name |
+| `key` | string | yes | `^[A-Z][A-Z0-9_]*$`, 2-10 chars | Project key (unique identifier) |
+| `name` | string | yes | `^[a-zA-Z0-9_\-\s]+$`, max 80 | Project display name |
 | `description` | string | yes | max 1000 | Project description |
 | `public` | boolean | no | default `false` | Project visibility — passed through verbatim to Bitbucket |
-| `admin_user` | string | at least one | `^[a-z0-9]+$`, max 15 | Username to receive PROJECT_ADMIN |
-| `admin_group` | string | at least one | `^[a-zA-Z0-9_\-]+$`, max 255 | Group name to receive PROJECT_ADMIN |
+| `admin_user` | string | at least one | `^[a-z][a-z0-9\-]*$`, max 20 | Username to receive PROJECT_ADMIN |
+| `admin_group` | string | at least one | max 255, no pattern | Group name to receive PROJECT_ADMIN |
 
 > At least one of `admin_user` or `admin_group` must be provided. Both can be given simultaneously.
 

@@ -58,9 +58,10 @@ def test_key_with_special_chars_raises():
         ProjectSpec(**{**VALID, "key": "MY PROJ!"})
 
 
-def test_name_with_spaces_raises():
-    with pytest.raises(ValidationError):
-        ProjectSpec(**{**VALID, "name": "my project"})
+def test_name_with_spaces_is_valid():
+    # name pattern allows whitespace (project display names are free text in Bitbucket's UI)
+    spec = ProjectSpec(**{**VALID, "name": "my project"})
+    assert spec.name == "my project"
 
 
 def test_empty_key_raises():
@@ -79,30 +80,71 @@ def test_public_defaults_to_false():
     assert spec.public is False
 
 
-def test_admin_user_at_max_length_15_is_valid():
-    spec = ProjectSpec(**{**VALID, "admin_user": "a" * 15})
-    assert spec.admin_user == "a" * 15
+def test_admin_user_at_max_length_20_is_valid():
+    spec = ProjectSpec(**{**VALID, "admin_user": "a" * 20})
+    assert spec.admin_user == "a" * 20
 
 
-def test_admin_user_over_max_length_16_raises():
+def test_admin_user_over_max_length_21_raises():
     with pytest.raises(ValidationError):
-        ProjectSpec(**{**VALID, "admin_user": "a" * 16})
+        ProjectSpec(**{**VALID, "admin_user": "a" * 21})
 
 
 def test_admin_user_with_uppercase_raises():
-    # pattern is ^[a-z0-9]+$ — lowercase only
+    # pattern is ^[a-z][a-z0-9\-]*$ — must start with a lowercase letter
     with pytest.raises(ValidationError):
         ProjectSpec(**{**VALID, "admin_user": "Admin"})
 
 
-def test_key_at_max_length_255_is_valid():
-    spec = ProjectSpec(**{**VALID, "key": "A" * 255})
-    assert spec.key == "A" * 255
-
-
-def test_key_over_max_length_256_raises():
+def test_admin_user_starting_with_digit_raises():
+    # pattern requires the first character to be a lowercase letter
     with pytest.raises(ValidationError):
-        ProjectSpec(**{**VALID, "key": "A" * 256})
+        ProjectSpec(**{**VALID, "admin_user": "1admin"})
+
+
+def test_admin_user_with_hyphen_is_valid():
+    # unlike the old ^[a-z0-9]+$ pattern, hyphens are now allowed after the first char —
+    # needed for service-account-style usernames like "svc-devops-tashtiot"
+    spec = ProjectSpec(**{**VALID, "admin_user": "svc-devops"})
+    assert spec.admin_user == "svc-devops"
+
+
+def test_key_at_min_length_2_is_valid():
+    spec = ProjectSpec(**{**VALID, "key": "AB"})
+    assert spec.key == "AB"
+
+
+def test_key_below_min_length_1_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "key": "A"})
+
+
+def test_key_at_max_length_10_is_valid():
+    spec = ProjectSpec(**{**VALID, "key": "A" * 10})
+    assert spec.key == "A" * 10
+
+
+def test_key_over_max_length_11_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "key": "A" * 11})
+
+
+def test_key_with_lowercase_raises():
+    # pattern is ^[A-Z][A-Z0-9_]*$ — uppercase only
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "key": "myproj"})
+
+
+def test_key_starting_with_digit_raises():
+    # pattern requires the first character to be an uppercase letter
+    with pytest.raises(ValidationError):
+        ProjectSpec(**{**VALID, "key": "1PROJ"})
+
+
+def test_admin_group_with_spaces_is_valid():
+    # admin_group has no pattern anymore — AD/LDAP group names commonly contain spaces
+    spec = ProjectSpec(**{**VALID, "admin_user": None, "admin_group": "Domain Users"})
+    assert spec.admin_group == "Domain Users"
 
 
 def test_description_at_max_length_1000_is_valid():

@@ -76,6 +76,32 @@ def test_project_key_underscores_replaced():
     assert spec.project_key == "my-project"
 
 
+def test_admin_user_at_max_length_20_is_valid():
+    spec = ProjectSpec(
+        name="my-project", storage_quota_giga_bytes=1, admin_user="a" * 20
+    )
+    assert spec.admin_user == "a" * 20
+
+
+def test_admin_user_over_max_length_21_raises():
+    with pytest.raises(ValidationError):
+        ProjectSpec(name="my-project", storage_quota_giga_bytes=1, admin_user="a" * 21)
+
+
+def test_admin_user_starting_with_digit_raises():
+    # pattern is ^[a-z][a-z0-9\-]*$ — must start with a lowercase letter
+    with pytest.raises(ValidationError):
+        ProjectSpec(name="my-project", storage_quota_giga_bytes=1, admin_user="1alice")
+
+
+def test_admin_group_with_spaces_is_valid():
+    # admin_group has no pattern anymore — AD/LDAP group names commonly contain spaces
+    spec = ProjectSpec(
+        name="my-project", storage_quota_giga_bytes=1, admin_group="Domain Users"
+    )
+    assert spec.admin_group == "Domain Users"
+
+
 # ── StorageQuotaBytes ─────────────────────────────────────────────────────────
 
 
@@ -142,6 +168,17 @@ def test_permission_spec_invalid_project_key_uppercase_raises():
     with pytest.raises(ValidationError):
         ProjectPermissionSpec(
             project_key="My-Project",
+            member_name="alice",
+            member_type=MemberType.USER,
+            roles=["Developer"],
+        )
+
+
+def test_permission_spec_project_key_starting_with_digit_raises():
+    # pattern is ^[a-z][a-z0-9\-]*$ — must start with a lowercase letter
+    with pytest.raises(ValidationError):
+        ProjectPermissionSpec(
+            project_key="1project",
             member_name="alice",
             member_type=MemberType.USER,
             roles=["Developer"],

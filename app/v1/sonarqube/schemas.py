@@ -5,6 +5,11 @@ from tashtiot_apis_library import OperationRequest
 
 from app.global_conf import global_config
 
+# RFC 1123 DNS label pattern — required for consumer names, since they become a DNS label in
+# https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}: lowercase alphanumerics and hyphens,
+# must start and end with an alphanumeric.
+_DNS_LABEL_PATTERN = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+
 SonarQubeSizeEnum = Enum(
     "SonarQubeSizeEnum",
     {s: s for s in global_config.SONARQUBE_ALLOWED_SIZES},
@@ -17,8 +22,8 @@ class SonarQubeConsumerSpec(BaseModel):
         ...,
         description="Consumer name — used as the directory name under consumers/",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=_DNS_LABEL_PATTERN,
     )
     plugins_list: list[str] | None = Field(
         default=None,
@@ -74,8 +79,8 @@ class GroupSpec(BaseModel):
         ...,
         description="Consumer name — SonarQube URL is built as https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=_DNS_LABEL_PATTERN,
     )
 
     name: str = Field(
@@ -83,7 +88,6 @@ class GroupSpec(BaseModel):
         description="Group name — will be created in SonarQube and granted global admin rights",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
 
 
