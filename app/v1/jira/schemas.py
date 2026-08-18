@@ -6,7 +6,7 @@ class ProjectSpec(BaseModel):
     key: str = Field(
         ...,
         description="Project key — uppercase letters and digits only",
-        min_length=1,
+        min_length=2,
         max_length=10,
         pattern=r"^[A-Z][A-Z0-9]+$",
     )
@@ -34,8 +34,8 @@ class ProjectSpec(BaseModel):
         ...,
         description="Username to set as project lead and administrator",
         min_length=1,
-        max_length=50,
-        pattern=r"^[a-z0-9_\-]+$",
+        max_length=20,
+        pattern=r"^[a-z][a-z0-9\-]*$",
     )
 
     admin_group: str | None = Field(
@@ -43,7 +43,6 @@ class ProjectSpec(BaseModel):
         description="Group name to additionally receive project administrator role",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
 
 

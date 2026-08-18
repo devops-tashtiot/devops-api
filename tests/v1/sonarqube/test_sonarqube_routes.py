@@ -113,12 +113,25 @@ def test_create_group_already_exists_does_not_rollback(mock_sonar_client):
     assert "user_groups/create" in mock_sonar_client.post.call_args.args[0]
 
 
-def test_create_group_invalid_name_returns_422(client):
+def test_create_group_name_too_long_returns_422(client):
+    # GroupSpec.name has no format pattern anymore (group names aren't a hostname), so the
+    # only remaining validation is length.
     response = client.post(
         f"{PREFIX}/",
         json={
             "metadata": VALID_METADATA,
-            "spec": {"consumer_name": "test-consumer", "name": "invalid name!"},
+            "spec": {"consumer_name": "test-consumer", "name": "a" * 256},
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_create_group_invalid_consumer_name_returns_422(client):
+    response = client.post(
+        f"{PREFIX}/",
+        json={
+            "metadata": VALID_METADATA,
+            "spec": {"consumer_name": "invalid consumer!", "name": "check"},
         },
     )
     assert response.status_code == 422

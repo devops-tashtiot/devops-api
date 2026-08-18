@@ -135,8 +135,8 @@ The archive must be pre-uploaded to the `platform-devops-team/xray-vulnerability
 |---|---|---|
 | `name` | `str` | required; `^[a-zA-Z0-9][a-zA-Z0-9 _\-]+$`; 2–32 chars |
 | `storage_quota_giga_bytes` | `int` | required; 1–10 GB |
-| `admin_user` | `Optional[str]` | `^[a-z0-9_\-]+$`; max 50 chars |
-| `admin_group` | `Optional[str]` | `^[a-zA-Z0-9_\-]+$`; max 255 chars |
+| `admin_user` | `str \| None` | `^[a-z][a-z0-9\-]*$`; max 20 chars |
+| `admin_group` | `str \| None` | max 255 chars; no `pattern` — group names left unconstrained (see `.claude/skills/schema_update_best_practice.md`) |
 
 ### `StorageQuotaBytes`
 
@@ -149,7 +149,7 @@ The archive must be pre-uploaded to the `platform-devops-team/xray-vulnerability
 
 | Field | Type | Constraints |
 |---|---|---|
-| `project_key` | `str` | `^[a-z0-9\-]+$`; 2–32 chars |
+| `project_key` | `str` | `^[a-z][a-z0-9\-]*$`; 2–32 chars |
 | `member_name` | `str` | username or group name |
 | `member_type` | `MemberType` | `"user"` or `"group"` |
 | `roles` | `list[str]` | non-empty; use `GET /permissions/roles/{name}` to discover valid values |

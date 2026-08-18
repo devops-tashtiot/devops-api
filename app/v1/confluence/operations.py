@@ -71,6 +71,28 @@ async def delete_space(confluence_client: Any, key: str):
     )
 
 
+# Every (operationKey, targetType) pair Confluence's space permissions screen exposes as a
+# checkbox — "read" must stay first and "administer" last (confirmed live: read has to be
+# granted before administer, and granting administer earlier alongside others has not been
+# tested to be safe, so it's kept last to match the previously-confirmed ordering).
+SPACE_PERMISSION_OPERATIONS: list[dict[str, str]] = [
+    {"operationKey": "read", "targetType": "space"},  # Pages: View
+    {"operationKey": "export", "targetType": "space"},  # Space: Export
+    {"operationKey": "restrict", "targetType": "space"},  # Restrictions: Add/Delete
+    {"operationKey": "delete_own", "targetType": "space"},  # Space: Delete Own
+    {"operationKey": "delete_mail", "targetType": "space"},  # Mail: Delete
+    {"operationKey": "create", "targetType": "page"},  # Pages: Add
+    {"operationKey": "delete", "targetType": "page"},  # Pages: Delete
+    {"operationKey": "create", "targetType": "blogpost"},  # Blog: Add
+    {"operationKey": "delete", "targetType": "blogpost"},  # Blog: Delete
+    {"operationKey": "create", "targetType": "comment"},  # Comments: Add
+    {"operationKey": "delete", "targetType": "comment"},  # Comments: Delete
+    {"operationKey": "create", "targetType": "attachment"},  # Attachments: Add
+    {"operationKey": "delete", "targetType": "attachment"},  # Attachments: Delete
+    {"operationKey": "administer", "targetType": "space"},  # Space: Admin
+]
+
+
 async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):
     key, admin_user = payload.key, payload.admin_user
     try:
@@ -81,10 +103,7 @@ async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):
         user_key = user_resp.json().get("userKey")
 
         grant_endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}/permissions/user/{user_key}/grant"
-        for op in [
-            {"operationKey": "read", "targetType": "space"},
-            {"operationKey": "administer", "targetType": "space"},
-        ]:
+        for op in SPACE_PERMISSION_OPERATIONS:
             _handle_response(await confluence_client.put(grant_endpoint, json=[op]))
     except Exception as e:
         logger.error(f"Unexpected error assigning user admin to space {key}: {e!s}")
@@ -95,10 +114,7 @@ async def assign_space_group_admin(confluence_client: Any, payload: SpaceSpec):
     key, admin_group = payload.key, payload.admin_group
     try:
         grant_endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}/permissions/group/{admin_group}/grant"
-        for op in [
-            {"operationKey": "read", "targetType": "space"},
-            {"operationKey": "administer", "targetType": "space"},
-        ]:
+        for op in SPACE_PERMISSION_OPERATIONS:
             _handle_response(await confluence_client.put(grant_endpoint, json=[op]))
     except Exception as e:
         logger.error(f"Unexpected error assigning group admin to space {key}: {e!s}")

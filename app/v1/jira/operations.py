@@ -13,11 +13,12 @@ def _handle_response(response):
             body = response.json()
             messages = body.get("errorMessages", [])
             field_errors = list(body.get("errors", {}).values())
-            detail = (
-                messages[0]
-                if messages
-                else (field_errors[0] if field_errors else response.text)
-            )
+            if messages:
+                detail = messages[0]
+            elif field_errors:
+                detail = field_errors[0]
+            else:
+                detail = response.text
         except Exception:
             detail = response.text
         raise HTTPException(status_code=response.status_code, detail=detail)

@@ -6,3 +6,4 @@ venv
 .coverage
 coverage.xml
 test-report.xml
+.DS_Store

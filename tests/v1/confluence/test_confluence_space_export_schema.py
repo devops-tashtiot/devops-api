@@ -19,26 +19,33 @@ def test_key_empty_raises():
         SpaceExportSpec(space_key="")
 
 
-def test_key_lowercase_raises():
+def test_key_lowercase_is_valid():
+    # space_key pattern is ^[A-Za-z0-9]+$ — no longer requires uppercase
+    spec = SpaceExportSpec(space_key="mysp")
+    assert spec.space_key == "mysp"
+
+
+def test_key_mixed_case_is_valid():
+    spec = SpaceExportSpec(space_key="MySpace")
+    assert spec.space_key == "MySpace"
+
+
+def test_key_starting_with_digit_is_valid():
+    # pattern no longer requires the first char to be a letter
+    spec = SpaceExportSpec(space_key="1SP")
+    assert spec.space_key == "1SP"
+
+
+def test_key_with_special_chars_raises():
     with pytest.raises(ValidationError):
-        SpaceExportSpec(space_key="mysp")
-
-
-def test_key_mixed_case_raises():
-    with pytest.raises(ValidationError):
-        SpaceExportSpec(space_key="MySpace")
-
-
-def test_key_starts_with_digit_raises():
-    with pytest.raises(ValidationError):
-        SpaceExportSpec(space_key="1SP")
+        SpaceExportSpec(space_key="MY-SP")
 
 
 def test_key_too_long_raises():
     with pytest.raises(ValidationError):
-        SpaceExportSpec(space_key="A" * 51)
+        SpaceExportSpec(space_key="A" * 256)
 
 
-def test_key_max_length_valid():
-    spec = SpaceExportSpec(space_key="A" * 50)
-    assert len(spec.space_key) == 50
+def test_key_max_length_255_valid():
+    spec = SpaceExportSpec(space_key="A" * 255)
+    assert len(spec.space_key) == 255

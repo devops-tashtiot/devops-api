@@ -24,6 +24,16 @@ a literal string, and unquoted it broke Helm's YAML→JSON conversion, sending t
 `sonarqube` ArgoCD Application into a permanent `ComparisonError` while silently continuing to
 serve the old Ingress.
 
+## Schema — consumer-name fields use a DNS-label pattern
+
+`SonarQubeConsumerSpec.name` and `GroupSpec.consumer_name` both become the DNS label in
+`https://{consumer_name}.sonarqube.{DOMAIN_SUFFIX}`, so both are constrained by
+`_DNS_LABEL_PATTERN` (`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` — RFC 1123 DNS label: lowercase
+alphanumeric and hyphens, must start/end with an alphanumeric), max 63 chars (the real
+Kubernetes/DNS label limit) — not the looser identifier pattern used elsewhere. `GroupSpec.name`
+(the actual SonarQube group name, not a hostname) dropped its `pattern` entirely — group names
+are left unconstrained, matching `.claude/skills/schema_update_best_practice.md`'s RBAC guidance.
+
 ## SonarQube REST API calls
 
 ### Create group — `POST /api/user_groups/create`

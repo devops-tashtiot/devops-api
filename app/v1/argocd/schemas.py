@@ -7,6 +7,14 @@ from tashtiot_apis_library import OperationRequest
 
 from app.global_conf import global_config
 
+# Identifier pattern shared by role/name/group fields (alphanumerics, underscore, hyphen).
+_IDENTIFIER_PATTERN = r"^[a-zA-Z0-9_\-]+$"
+
+# RFC 1123 DNS label pattern — required for fields that become part of a Kubernetes/ArgoCD
+# resource name (chosen_name/app_name/consumer name): lowercase alphanumerics and hyphens,
+# must start and end with an alphanumeric.
+_DNS_LABEL_PATTERN = r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+
 # g lines: g, <subject>, <role>
 # p lines: p, <subject>, <resource>, <action>, <object>, allow|deny
 # Resources and actions are locked to the ArgoCD RBAC spec:
@@ -51,14 +59,14 @@ class RbacActionEnum(str, Enum):
 
 class GLine(BaseModel):
     ad_group: str = Field(..., min_length=1, max_length=255)
-    role: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
+    role: str = Field(..., min_length=1, max_length=255, pattern=_IDENTIFIER_PATTERN)
 
     def to_rbac(self) -> str:
         return f'g, "{self.ad_group}", role:{self.role}'
 
 
 class PLine(BaseModel):
-    role: str = Field(..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$")
+    role: str = Field(..., min_length=1, max_length=255, pattern=_IDENTIFIER_PATTERN)
     resource: RbacResourceEnum
     action: RbacActionEnum
     object: str = Field(..., min_length=1, max_length=1024)
@@ -93,7 +101,7 @@ class ApplicationCluster(BaseModel):
         description="Logical name for the cluster",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        pattern=_IDENTIFIER_PATTERN,
     )
     namespace: str = Field(
         ...,
@@ -119,15 +127,15 @@ class ClusterSecretSpec(BaseModel):
         ...,
         description="Prefix for the ArgoCD app name — final name will be {chosen_name}-cluster-secret",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=48,
+        pattern=_DNS_LABEL_PATTERN,
     )
     app_name: str = Field(
         ...,
         description="Consumer name (e.g. insight, insight-prod) — used as the ArgoCD instance name",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=_DNS_LABEL_PATTERN,
     )
     application_clusters: list[ApplicationCluster] = Field(
         ...,
@@ -145,11 +153,9 @@ class ClusterSecretUpdateSpec(BaseModel):
 
 
 class ClusterSecretIdentifier(BaseModel):
-    app_name: str = Field(
-        ..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$"
-    )
+    app_name: str = Field(..., min_length=1, max_length=63, pattern=_DNS_LABEL_PATTERN)
     chosen_name: str = Field(
-        ..., min_length=1, max_length=255, pattern=r"^[a-zA-Z0-9_\-]+$"
+        ..., min_length=1, max_length=63, pattern=_DNS_LABEL_PATTERN
     )
 
 
@@ -187,8 +193,8 @@ class ConsumerConfigSpec(BaseModel):
         ...,
         description="Consumer name — also used as the directory name under consumers/",
         min_length=1,
-        max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
+        max_length=63,
+        pattern=_DNS_LABEL_PATTERN,
     )
     environment: EnvironmentEnum = Field(
         ...,
@@ -205,7 +211,6 @@ class ConsumerConfigSpec(BaseModel):
         description="Active Directory group to grant admin access",
         min_length=1,
         max_length=255,
-        pattern=r"^[a-zA-Z0-9_\-]+$",
     )
     g_lines: list[GLine] | None = Field(
         default=None,

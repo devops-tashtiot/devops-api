@@ -119,11 +119,11 @@ REST trigger, independently confirmed on Jira too. `sync_user_directory` therefo
 
 | Field | Type | Constraints |
 |---|---|---|
-| `key` | `str` | required; `^[A-Z][A-Z0-9]+$`; max 10 chars |
+| `key` | `str` | required; `^[A-Z][A-Z0-9]+$`; 2-10 chars |
 | `name` | `str` | required; max 255 chars |
 | `description` | `str` | required; max 1000 chars |
-| `admin_user` | `str` (required) | `^[a-z0-9_\-]+$`; max 50 chars |
-| `admin_group` | `Optional[str]` | `^[a-zA-Z0-9_\-]+$`; max 255 chars |
+| `admin_user` | `str` (required) | `^[a-z][a-z0-9\-]*$`; max 20 chars |
+| `admin_group` | `str \| None` | max 255 chars; no `pattern` — group names left unconstrained (see `.claude/skills/schema_update_best_practice.md`) |
 
 No cross-field validator — `admin_user` is required on its own (see "Create project" above
 for why Jira, unlike Bitbucket/Confluence, can't accept a group in place of a lead user).

@@ -23,8 +23,8 @@ The project key is derived from the name automatically (lowercased, spaces and u
 |---|---|---|---|---|
 | `name` | string | yes | `^[a-zA-Z0-9][a-zA-Z0-9 _\-]+$`, 2–32 chars | Project display name |
 | `storage_quota_giga_bytes` | integer | yes | 1–10 | Storage quota in GB |
-| `admin_user` | string | at least one | `^[a-z0-9_\-]+$`, max 50 | Username to receive PROJECT_ADMIN |
-| `admin_group` | string | at least one | `^[a-zA-Z0-9_\-]+$`, max 255 | Group name to receive PROJECT_ADMIN |
+| `admin_user` | string | at least one | `^[a-z][a-z0-9\-]*$`, max 20 | Username to receive PROJECT_ADMIN |
+| `admin_group` | string | at least one | max 255, no pattern | Group name to receive PROJECT_ADMIN |
 
 > At least one of `admin_user` or `admin_group` must be provided. Both can be provided to assign admin to a user and a group simultaneously.
 
@@ -69,7 +69,7 @@ If `member_type` is `"group"` and the group is not yet imported into JFrog Platf
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `project_key` | string | yes | `^[a-z0-9\-]+$`, 2–32 chars | Target project key |
+| `project_key` | string | yes | `^[a-z][a-z0-9\-]*$`, 2–32 chars | Target project key |
 | `member_name` | string | yes | max 255 | Username or group name |
 | `member_type` | `"user"` \| `"group"` | yes | — | Whether the member is a user or an LDAP group |
 | `roles` | array of roles | yes | at least one | Roles to assign — see `GET /permissions/roles` |

@@ -1,5 +1,21 @@
 # ArgoCD module — developer notes
 
+## Schema — DNS-label constraints on name-like fields
+
+`ConsumerConfigSpec.name`, `ClusterSecretSpec.chosen_name`/`app_name`, and
+`ClusterSecretIdentifier.chosen_name`/`app_name` all end up as (or prefix) a Kubernetes/ArgoCD
+resource name — `chosen_name` becomes part of an ArgoCD `Application` name
+(`{chosen_name}-cluster-secret`), and `app_name` becomes a DNS label in
+`https://{app_name}.argocd.{DOMAIN_SUFFIX}`. All five are constrained by `_DNS_LABEL_PATTERN`
+(`^[a-z0-9]([-a-z0-9]*[a-z0-9])?$` — RFC 1123 DNS label: lowercase alphanumeric and hyphens,
+must start/end with an alphanumeric), not the looser `_IDENTIFIER_PATTERN` used elsewhere in
+this file for `GLine.role`/`PLine.role`/`ApplicationCluster.name` (which don't become resource
+names). `max_length` is `63` for `app_name`/`name` (the real Kubernetes/DNS label limit) and
+`48` for `chosen_name` (63 minus the `-cluster-secret` suffix's 15 chars, so the final composed
+name never exceeds 63). `ConsumerConfigSpec.ad_admin_group` dropped its `pattern` entirely —
+Active Directory group names are left unconstrained, matching
+`.claude/skills/schema_update_best_practice.md`'s RBAC guidance.
+
 ## Dev defaults
 
 When calling cluster-secret endpoints locally, use these values:

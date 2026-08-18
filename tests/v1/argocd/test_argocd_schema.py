@@ -104,15 +104,69 @@ class TestConsumerConfigSpec:
                 ad_admin_group="g",
             )
 
-    def test_name_with_hyphens_and_underscores_valid(self):
+    def test_name_with_hyphens_valid(self):
         spec = ConsumerConfigSpec(
-            name="my_consumer-1",
+            name="my-consumer-1",
             environment=VALID_ENV,
             size=VALID_SIZE,
             include_resources=[VALID_RESOURCE],
             ad_admin_group="g",
         )
-        assert spec.name == "my_consumer-1"
+        assert spec.name == "my-consumer-1"
+
+    def test_name_with_underscore_raises(self):
+        # name is a DNS label (used as an ArgoCD/k8s resource name) — underscores aren't
+        # valid in a DNS label, unlike the old, looser _IDENTIFIER_PATTERN.
+        with pytest.raises(ValidationError):
+            ConsumerConfigSpec(
+                name="my_consumer",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
+
+    def test_name_starting_with_hyphen_raises(self):
+        # DNS label must start and end with an alphanumeric
+        with pytest.raises(ValidationError):
+            ConsumerConfigSpec(
+                name="-consumer",
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
+
+    def test_name_at_max_length_63_is_valid(self):
+        spec = ConsumerConfigSpec(
+            name="a" * 63,
+            environment=VALID_ENV,
+            size=VALID_SIZE,
+            include_resources=[VALID_RESOURCE],
+            ad_admin_group="g",
+        )
+        assert spec.name == "a" * 63
+
+    def test_name_over_max_length_64_raises(self):
+        with pytest.raises(ValidationError):
+            ConsumerConfigSpec(
+                name="a" * 64,
+                environment=VALID_ENV,
+                size=VALID_SIZE,
+                include_resources=[VALID_RESOURCE],
+                ad_admin_group="g",
+            )
+
+    def test_ad_admin_group_with_spaces_is_valid(self):
+        # ad_admin_group has no pattern anymore — AD group names commonly contain spaces
+        spec = ConsumerConfigSpec(
+            name="c",
+            environment=VALID_ENV,
+            size=VALID_SIZE,
+            include_resources=[VALID_RESOURCE],
+            ad_admin_group="Domain Users",
+        )
+        assert spec.ad_admin_group == "Domain Users"
 
 
 class TestApplicationCluster:
@@ -181,6 +235,22 @@ class TestClusterSecretSpec:
             }
         )
         assert len(spec.application_clusters) == 2
+
+    def test_chosen_name_at_max_length_48_is_valid(self):
+        spec = ClusterSecretSpec(**{**self._base(), "chosen_name": "a" * 48})
+        assert spec.chosen_name == "a" * 48
+
+    def test_chosen_name_over_max_length_49_raises(self):
+        with pytest.raises(ValidationError):
+            ClusterSecretSpec(**{**self._base(), "chosen_name": "a" * 49})
+
+    def test_app_name_at_max_length_63_is_valid(self):
+        spec = ClusterSecretSpec(**{**self._base(), "app_name": "a" * 63})
+        assert spec.app_name == "a" * 63
+
+    def test_app_name_over_max_length_64_raises(self):
+        with pytest.raises(ValidationError):
+            ClusterSecretSpec(**{**self._base(), "app_name": "a" * 64})
 
 
 class TestClusterSecretUpdateSpec:
