@@ -58,6 +58,15 @@ class DevopsStaticSettings(BaseSettings):
         default="svc-lcl-bb-api",
     )
 
+    BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES: list[str] = Field(
+        default=["Nati", "Kat"],
+        description="Valid mirrored_env_destination values on MirrorProjectSpec — purely "
+        "display-name suffixes appended to the project name as ' - {value}'. Not "
+        "Bitbucket Smart Mirrors server names — the actual registered mirror server is "
+        "discovered live via the Mirroring API, not configured (see "
+        "app/v1/bitbucket/operations.py's _get_registered_mirror_server).",
+    )
+
     # ======================================================confluence=============================================
 
     CONFLUENCE_ENABLE_API: bool = Field(

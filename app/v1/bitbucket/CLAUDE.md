@@ -69,26 +69,53 @@ Body: {"key": key, "name": name, "description": description, "public": <caller-s
 passes it through to Bitbucket unmodified. Sending `"public": true` really does create a public
 project.
 
-**`mirrored_env_destination` (POST /mirror only) — name suffix, plus real registration with a
-Bitbucket Smart Mirrors physical mirror server.** `create_mirror_project` builds a copy of the
-payload with `" - {mirrored_env_destination}"` (`mirrored_env_destination` is
-`Literal["Nati", "Kat"]`, required on `MirrorProjectSpec`) appended to `name`, then calls the
-same `create_project` the plain endpoint uses — `body["name"]` becomes e.g. `"My Project - Nati"`.
-`key` is untouched.
+**`mirrored_env_destination` (POST /mirror only) — a non-empty list of display-name suffixes,
+NOT Bitbucket Smart Mirrors server names.** The field is `list[str]` (`min_length=1`, no
+duplicates). `create_mirror_project` joins the entries with `+` and appends that to `name` (e.g.
+`["Nati", "Kat"]` → `"My Project - Nati+Kat"`), calls the same `create_project` the plain
+endpoint uses, then registers the project with the mirror **exactly once** — see "Mirror
+registration" below for why it's decoupled from this field. `key` is untouched.
+
+**Valid suffix values live on the spec itself (`mirror_suffix_project_names`), not a fixed
+`Literal` or module-level `Enum`.** `MirrorProjectSpec` carries a second field,
+`mirror_suffix_project_names: list[str]`, defaulted via `default_factory` from
+`global_config.BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (`app/global_conf.py` — a global field,
+not this module's own `conf.py`, same as `BITBUCKET_USERNAME`/`BITBUCKET_PASSWORD`/
+`BITBUCKET_API_URL`; default `["Nati", "Kat"]`, overridable via the
+`BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` env var). `MirrorProjectSpec.validate_mirrored_env_destination`
+(a `model_validator`) checks every `mirrored_env_destination` entry against
+`self.mirror_suffix_project_names` **at request-validation time**, not against a value frozen at
+import time — this is a deliberate difference from the `EnvironmentEnum`/`SizeEnum` pattern
+`app/v1/argocd/schemas.py` uses for `ARGOCD_ALLOWED_ENVS`/`ARGOCD_ALLOWED_SIZES` (those build a
+module-level `Enum` once at import, so a config change needs an app restart to take effect; this
+field re-reads `global_config` on every request via `default_factory`, no restart needed).
+Because `mirror_suffix_project_names` is a normal field, **a caller can override it per-request**
+to allow a different set of naming suffixes for this request — pass both fields together if you
+need a suffix outside `BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES`.
 
 ### Mirror registration — Bitbucket Data Center's Smart Mirrors REST API
 
-`mirrored_env_destination` names one of this instance's **registered physical mirror servers**
-(Bitbucket Data Center's Smart Mirrors farm feature — a mirror is a separate, real Bitbucket
-server instance, not something devops-api creates). `create_mirror_project` looks the mirror up
-live rather than hardcoding its URL, then registers the new project with it:
+**`mirrored_env_destination` does not name a mirror server, and the actual mirror server is
+discovered live, not configured.** An earlier version of this endpoint incorrectly used each
+`mirrored_env_destination` entry (e.g. `"Nati"`, `"Kat"`) as the name to search for in
+Bitbucket's own `mirrorServers` list — that only worked by coincidence if a real registered
+mirror happened to be named exactly `"Nati"` or `"Kat"`. A version after that introduced a
+`BITBUCKET_MIRROR_SERVER_NAME` config value instead — also removed, since this platform
+registers exactly **one** physical Smart Mirrors server, so there's nothing to disambiguate by
+name at all. `_get_registered_mirror_server` (`operations.py`) fetches the full `mirrorServers`
+list and returns it directly if there's exactly one entry, raising `404` if none are registered
+or `409` if more than one is found (this code assumes a single-mirror deployment; a genuine
+multi-mirror farm would need a real disambiguation mechanism, not currently implemented).
+`create_mirror_project` registers the project with that mirror **exactly once**, regardless of
+how many entries are in `mirrored_env_destination` — that field only controls the project's
+display name, never how many times or with which mirror(s) it gets registered.
 
 ```
 GET  /rest/mirroring/1.0/mirrorServers?start={start}&limit=100     (paginated, on the main instance)
   → {"values": [{"id", "baseUrl", "name", "productType", "productVersion", "lastSeenDate",
                  "enabled"}], "isLastPage": bool, "nextPageStart": int}
-  → _find_mirror_server matches by name (case-insensitive) against mirrored_env_destination,
-    raises 404 if no mirror is registered under that name
+  → _get_registered_mirror_server accumulates all pages, returns the single entry (404 if
+    zero, 409 if more than one)
 
 GET  {mirror_baseUrl}/rest/mirroring/1.0/upstreamServers?start={start}&limit=100
      (paginated, called against the *mirror server's own* API, same BITBUCKET_USERNAME/
@@ -107,8 +134,9 @@ POST {mirror_baseUrl}/rest/mirroring/1.0/upstreamServers/{upstreamId}/settings/p
 **Not yet verified live** — written from Atlassian's REST API docs
 (`bitbucket-mirroring-upstream-rest.html` / `bitbucket-mirroring-mirror-rest.html`), not
 confirmed against a real Smart Mirrors farm (this sandbox has no live access to the deployed
-Bitbucket instance, and its actual Smart Mirrors setup — whether "Nati"/"Kat" mirrors exist,
-whether the upstream pairing is established — is unconfirmed). In particular:
+Bitbucket instance, and its actual Smart Mirrors setup — whether exactly one mirror is really
+registered as assumed, whether the upstream pairing is established — is unconfirmed). In
+particular:
 - The exact response field names (`id`, `baseUrl`, `name` on `mirrorServers`; `id`, `baseUrl` on
   `upstreamServers`) come from Atlassian's example JSON, not a live call against this instance's
   Bitbucket version — confirm they match before relying on this in production.
@@ -209,16 +237,17 @@ revisit if Atlassian ever ships this.
 | `admin_group` | `str \| None` | max 255 chars; no `pattern` — Bitbucket/AD group names are left unconstrained |
 
 `MirrorProjectSpec` (`POST /mirror` only, `BitbucketMirrorProjectRequest.spec`) extends
-`ProjectSpec` with one additional required field:
+`ProjectSpec` with two additional fields:
 
 | Field | Type | Constraints |
 |---|---|---|
-| `mirrored_env_destination` | `Literal["Nati", "Kat"]` | required; appended to `name` as `" - {mirrored_env_destination}"` |
+| `mirror_suffix_project_names` | `list[str]` | optional; defaults (via `default_factory`) to `global_config.BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (`["Nati", "Kat"]`); caller may override to allow a different set of naming suffixes for this request — **not** related to which mirror server gets used, which is discovered live (see "Mirror registration" below) |
+| `mirrored_env_destination` | `list[str]` | required; `min_length=1`, no duplicates, every entry must be in `mirror_suffix_project_names`; joined by `+` and appended to `name` as `" - {joined}"` — a naming choice only, does not affect which/how many mirrors are registered |
 
-Model validator (inherited by both): at least one of `admin_user` / `admin_group` must be
-provided. `mirrored_env_destination` has no separate conditional validator anymore — it's simply
-a required field on `MirrorProjectSpec`, since the endpoint itself (`POST /mirror` vs `POST /`)
-now determines whether mirroring applies.
+Model validators: `require_at_least_one_admin` (inherited from `ProjectSpec`) requires at least
+one of `admin_user` / `admin_group`. `validate_mirrored_env_destination` (on `MirrorProjectSpec`)
+enforces the no-duplicates and allowed-values checks above, reading
+`self.mirror_suffix_project_names` at validation time rather than a value fixed at import.
 
 **Aligned to Bitbucket Data Center's actual project-key constraints** (previously the schema
 allowed any 1-255 char alphanumeric string, which was far looser than what Bitbucket itself
@@ -239,7 +268,13 @@ service.
 | `BITBUCKET_CROWD_ENDPOINT` | `/rest/crowd/latest` | Crowd REST API base path — used for user directory listing and sync |
 | `BITBUCKET_MIRRORING_ENDPOINT` | `/rest/mirroring/1.0` | Smart Mirrors REST API base path — see "Mirror registration" above |
 
-Global credentials (`BITBUCKET_USERNAME`, `BITBUCKET_PASSWORD`) and `BITBUCKET_API_URL` live in `global_conf.py`.
+Global credentials (`BITBUCKET_USERNAME`, `BITBUCKET_PASSWORD`) and `BITBUCKET_API_URL` live in
+`global_conf.py`, along with `BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (default `["Nati", "Kat"]` —
+the default for `MirrorProjectSpec.mirror_suffix_project_names`, naming suffixes only, see
+"Valid suffix values live on the spec itself" above; kept in `global_conf.py` rather than this
+module's own `conf.py` to match where the other Bitbucket connection settings already are).
+There is no config value naming the actual mirror server — it's discovered live via
+`_get_registered_mirror_server`, see "Mirror registration" above.
 
 ## Testing
 

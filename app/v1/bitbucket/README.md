@@ -32,20 +32,24 @@ Rolls back (deletes the project) automatically if any permission step fails.
 
 ### `POST /mirror`
 
-Creates a new Bitbucket project registered with a physical Smart Mirrors server, and grants
-PROJECT_ADMIN to the specified user and/or group. Rolls back (deletes the project) automatically
-if any later step fails.
+Creates a new Bitbucket project registered with this deployment's physical Smart Mirrors server,
+and grants PROJECT_ADMIN to the specified user and/or group. Rolls back (deletes the project)
+automatically if any later step fails.
 
 **Request body** — same fields as `POST /`, plus:
 
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
-| `mirrored_env_destination` | string | yes | one of `Nati`, `Kat` | Which registered mirror server to use — appended to the end of `name` as `" - Nati"` or `" - Kat"`, and the project is registered with that mirror |
+| `mirror_suffix_project_names` | array of strings | no | defaults to `BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (`Nati`, `Kat`) | The set of valid **naming suffixes** for this request — not mirror server names |
+| `mirrored_env_destination` | array of strings | yes | non-empty, no duplicates; each entry must be in `mirror_suffix_project_names` | Naming suffix(es) — joined by `+` and appended to the end of `name`. Does **not** control which or how many mirror servers get used |
 
-> The actual project name sent to Bitbucket becomes `"{name} - {mirrored_env_destination}"` — `key` is
-> unaffected. After the project is created it's also registered with the named physical mirror
-> server via Bitbucket's Smart Mirrors REST API (looked up live by name — see
+> The actual project name sent to Bitbucket becomes `"{name} - {destinations joined by '+'}"`
+> (e.g. `["Nati", "Kat"]` → `"{name} - Nati+Kat"`) — `key` is unaffected. Separately, after the
+> project is created it's registered **exactly once** with this instance's single registered
+> physical Smart Mirrors server, discovered live via Bitbucket's Smart Mirrors REST API (see
 > `app/v1/bitbucket/CLAUDE.md`'s "Mirror registration" section for the exact calls).
+> `mirrored_env_destination` is unrelated to which mirror gets used — it only affects the
+> project's display name.
 
 ---
 

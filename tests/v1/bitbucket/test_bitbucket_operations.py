@@ -86,7 +86,7 @@ def _mirror_project_payload(**overrides):
         "name": "my-project",
         "description": "A mirrored project",
         "admin_user": "nati",
-        "mirrored_env_destination": "Nati",
+        "mirrored_env_destination": ["Nati"],
     }
     data.update(overrides)
     return MirrorProjectSpec(**data)
@@ -104,58 +104,80 @@ def _paged_client(pages: list[dict]):
 
 
 @pytest.mark.asyncio
-async def test_find_mirror_server_reraises_on_client_error():
+async def test_get_registered_mirror_server_reraises_on_client_error():
     with pytest.raises(RuntimeError):
-        await ops._find_mirror_server(_raising_client(), "Nati")
+        await ops._get_registered_mirror_server(_raising_client())
 
 
 @pytest.mark.asyncio
-async def test_find_mirror_server_matches_by_name_case_insensitive():
+async def test_get_registered_mirror_server_returns_the_single_mirror():
     client = _paged_client(
         [
             {
                 "values": [
                     {
                         "id": "m1",
-                        "baseUrl": "https://nati-mirror.example.com",
-                        "name": "nati",
+                        "baseUrl": "https://the-mirror.example.com",
+                        "name": "mirror",
                     }
                 ],
                 "isLastPage": True,
             }
         ]
     )
-    mirror = await ops._find_mirror_server(client, "Nati")
-    assert mirror["baseUrl"] == "https://nati-mirror.example.com"
+    mirror = await ops._get_registered_mirror_server(client)
+    assert mirror["baseUrl"] == "https://the-mirror.example.com"
 
 
 @pytest.mark.asyncio
-async def test_find_mirror_server_paginates_across_pages():
+async def test_get_registered_mirror_server_paginates_across_pages():
     client = _paged_client(
         [
             {
-                "values": [{"id": "m1", "name": "kat"}],
+                "values": [
+                    {
+                        "id": "m1",
+                        "baseUrl": "https://the-mirror.example.com",
+                        "name": "mirror",
+                    }
+                ],
                 "isLastPage": False,
                 "nextPageStart": 1,
             },
             {
-                "values": [
-                    {"id": "m2", "baseUrl": "https://nati.example.com", "name": "nati"}
-                ],
+                "values": [],
                 "isLastPage": True,
             },
         ]
     )
-    mirror = await ops._find_mirror_server(client, "Nati")
-    assert mirror["id"] == "m2"
+    mirror = await ops._get_registered_mirror_server(client)
+    assert mirror["id"] == "m1"
 
 
 @pytest.mark.asyncio
-async def test_find_mirror_server_not_found_raises_404():
+async def test_get_registered_mirror_server_none_registered_raises_404():
     client = _paged_client([{"values": [], "isLastPage": True}])
     with pytest.raises(HTTPException) as exc:
-        await ops._find_mirror_server(client, "Nati")
+        await ops._get_registered_mirror_server(client)
     assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_registered_mirror_server_multiple_registered_raises_409():
+    client = _paged_client(
+        [
+            {
+                "values": [
+                    {"id": "m1", "baseUrl": "https://one.example.com", "name": "one"},
+                    {"id": "m2", "baseUrl": "https://two.example.com", "name": "two"},
+                ],
+                "isLastPage": True,
+            }
+        ]
+    )
+    with pytest.raises(HTTPException) as exc:
+        await ops._get_registered_mirror_server(client)
+    assert exc.value.status_code == 409
 
 
 @pytest.mark.asyncio
@@ -196,8 +218,8 @@ async def test_register_project_with_mirror_calls_settings_endpoint():
                 "values": [
                     {
                         "id": "m1",
-                        "baseUrl": "https://nati-mirror.example.com",
-                        "name": "Nati",
+                        "baseUrl": "https://the-mirror.example.com",
+                        "name": "mirror",
                     }
                 ],
                 "isLastPage": True,
@@ -222,9 +244,7 @@ async def test_register_project_with_mirror_calls_settings_endpoint():
 
     with patch.object(ops, "BaseAPI") as mock_base_api:
         mock_base_api.return_value.client = mirror_client
-        await ops.register_project_with_mirror(
-            main_client, _mirror_project_payload(), project_id=42
-        )
+        await ops.register_project_with_mirror(main_client, "MYPROJ", project_id=42)
 
     endpoint = mirror_client.post.call_args.args[0]
     assert endpoint.endswith("/settings/projects/42")
@@ -244,8 +264,8 @@ async def test_create_mirror_project_creates_then_registers():
                     "values": [
                         {
                             "id": "m1",
-                            "baseUrl": "https://nati-mirror.example.com",
-                            "name": "Nati",
+                            "baseUrl": "https://the-mirror.example.com",
+                            "name": "mirror",
                         }
                     ],
                     "isLastPage": True,
@@ -277,6 +297,63 @@ async def test_create_mirror_project_creates_then_registers():
     assert result["id"] == 7
     main_client.post.assert_called_once()
     assert main_client.post.call_args.kwargs["json"]["name"] == "my-project - Nati"
+    # registered exactly once against the single configured mirror server, regardless
+    # of the mirrored_env_destination suffix chosen for the name
     mirror_client.post.assert_called_once()
     endpoint = mirror_client.post.call_args.args[0]
     assert endpoint.endswith("/settings/projects/7")
+
+
+@pytest.mark.asyncio
+async def test_create_mirror_project_with_two_destinations_registers_once():
+    # mirrored_env_destination is a display-name suffix, not a mirror server name — two
+    # destinations still means exactly one registration call, against the single
+    # discovered mirror server, not one call per destination.
+    create_response = MagicMock(status_code=200, text="")
+    create_response.json = MagicMock(return_value={"id": 7, "key": "MYPROJ"})
+    main_client = MagicMock()
+    main_client.post = AsyncMock(return_value=create_response)
+    main_client.get = AsyncMock(
+        return_value=MagicMock(
+            status_code=200,
+            json=MagicMock(
+                return_value={
+                    "values": [
+                        {
+                            "id": "m1",
+                            "baseUrl": "https://the-mirror.example.com",
+                            "name": "mirror",
+                        }
+                    ],
+                    "isLastPage": True,
+                }
+            ),
+        )
+    )
+
+    mirror_client = MagicMock()
+    mirror_client.get = AsyncMock(
+        return_value=MagicMock(
+            status_code=200,
+            json=MagicMock(
+                return_value={
+                    "values": [
+                        {"id": "u1", "baseUrl": ops.global_config.BITBUCKET_API_URL}
+                    ],
+                    "isLastPage": True,
+                }
+            ),
+        )
+    )
+    mirror_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
+
+    with patch.object(ops, "BaseAPI") as mock_base_api:
+        mock_base_api.return_value.client = mirror_client
+        result = await ops.create_mirror_project(
+            main_client,
+            _mirror_project_payload(mirrored_env_destination=["Nati", "Kat"]),
+        )
+
+    assert result["id"] == 7
+    assert main_client.post.call_args.kwargs["json"]["name"] == "my-project - Nati+Kat"
+    mirror_client.post.assert_called_once()

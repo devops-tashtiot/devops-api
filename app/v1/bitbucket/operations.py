@@ -83,12 +83,13 @@ async def create_project(bitbucket_client: Any, payload: ProjectSpec) -> dict:
         raise
 
 
-async def _find_mirror_server(bitbucket_client: Any, mirror_name: str) -> dict:
-    # Discovered live via the Mirroring API rather than hardcoded — mirror servers'
-    # base URLs are registered/renamed on the Bitbucket side (Administration > Mirroring),
-    # not something devops-api should know ahead of time.
+async def _get_registered_mirror_server(bitbucket_client: Any) -> dict:
+    # Discovered live via the Mirroring API rather than a configured name — this platform
+    # registers exactly one physical Smart Mirrors server (Administration > Mirroring), so
+    # there's nothing to disambiguate by name; devops-api just uses whichever one exists.
     endpoint = f"{config.BITBUCKET_MIRRORING_ENDPOINT}/mirrorServers"
     start = 0
+    mirrors: list[dict] = []
     try:
         while True:
             response = await bitbucket_client.get(
@@ -96,9 +97,7 @@ async def _find_mirror_server(bitbucket_client: Any, mirror_name: str) -> dict:
             )
             _handle_response(response)
             page = response.json()
-            for mirror in page["values"]:
-                if mirror.get("name", "").lower() == mirror_name.lower():
-                    return mirror
+            mirrors.extend(page["values"])
             if page.get("isLastPage", True):
                 break
             start = page["nextPageStart"]
@@ -107,10 +106,19 @@ async def _find_mirror_server(bitbucket_client: Any, mirror_name: str) -> dict:
     except Exception as e:
         logger.error(f"Unexpected error listing Bitbucket mirror servers: {e!s}")
         raise
-    raise HTTPException(
-        status_code=404,
-        detail=f"No registered Bitbucket mirror server named '{mirror_name}' was found",
-    )
+    if not mirrors:
+        raise HTTPException(
+            status_code=404,
+            detail="No Bitbucket Smart Mirrors server is registered on this instance",
+        )
+    if len(mirrors) > 1:
+        names = [m.get("name") for m in mirrors]
+        raise HTTPException(
+            status_code=409,
+            detail=f"Multiple Bitbucket Smart Mirrors servers are registered {names} — "
+            "devops-api only supports a deployment with exactly one",
+        )
+    return mirrors[0]
 
 
 async def _find_upstream_id(mirror_client: Any) -> str:
@@ -145,11 +153,9 @@ async def _find_upstream_id(mirror_client: Any) -> str:
 
 
 async def register_project_with_mirror(
-    bitbucket_client: Any, payload: MirrorProjectSpec, project_id: int
+    bitbucket_client: Any, key: str, project_id: int
 ) -> None:
-    mirror = await _find_mirror_server(
-        bitbucket_client, payload.mirrored_env_destination
-    )
+    mirror = await _get_registered_mirror_server(bitbucket_client)
     # Same admin credentials as the main Bitbucket — per this platform's mirror setup, the
     # physical mirror servers share the same auth as the source instance.
     mirror_client = BaseAPI(
@@ -167,21 +173,24 @@ async def register_project_with_mirror(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(
-            f"Unexpected error registering project {payload.key} with mirror "
-            f"'{payload.mirrored_env_destination}': {e!s}"
-        )
+        logger.error(f"Unexpected error registering project {key} with mirror: {e!s}")
         raise
 
 
 async def create_mirror_project(
     bitbucket_client: Any, payload: MirrorProjectSpec
 ) -> dict:
+    # mirrored_env_destination is purely a display-name suffix (or several, joined by
+    # "+") — it does NOT name a Bitbucket Smart Mirrors server. The actual mirror server
+    # is discovered live (see _get_registered_mirror_server), and every mirrored project
+    # is registered with it exactly once, regardless of how many suffixes were chosen for
+    # the name.
+    suffix = "+".join(payload.mirrored_env_destination)
     mirrored_name_payload = payload.model_copy(
-        update={"name": f"{payload.name} - {payload.mirrored_env_destination}"}
+        update={"name": f"{payload.name} - {suffix}"}
     )
     project = await create_project(bitbucket_client, mirrored_name_payload)
-    await register_project_with_mirror(bitbucket_client, payload, project["id"])
+    await register_project_with_mirror(bitbucket_client, payload.key, project["id"])
     return project
 
 

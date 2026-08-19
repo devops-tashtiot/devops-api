@@ -95,8 +95,8 @@ def test_create_mirror_project_appends_mirrored_env_destination_to_name(
                     "values": [
                         {
                             "id": "m1",
-                            "baseUrl": "https://nati-mirror.example.com",
-                            "name": "Nati",
+                            "baseUrl": "https://the-mirror.example.com",
+                            "name": "mirror",
                         }
                     ],
                     "isLastPage": True,
@@ -119,7 +119,7 @@ def test_create_mirror_project_appends_mirrored_env_destination_to_name(
 
     payload = {
         "metadata": VALID_METADATA,
-        "spec": {**VALID_PAYLOAD["spec"], "mirrored_env_destination": "Nati"},
+        "spec": {**VALID_PAYLOAD["spec"], "mirrored_env_destination": ["Nati"]},
     }
     with patch("app.v1.bitbucket.operations.BaseAPI") as mock_base_api:
         mock_base_api.return_value.client = mirror_client
@@ -144,7 +144,7 @@ def test_create_project_rejects_mirrored_env_destination_field(client):
     # since BitbucketProjectRequest.spec is a plain ProjectSpec.
     payload = {
         "metadata": VALID_METADATA,
-        "spec": {**VALID_PAYLOAD["spec"], "mirrored_env_destination": "Nati"},
+        "spec": {**VALID_PAYLOAD["spec"], "mirrored_env_destination": ["Nati"]},
     }
     response = client.post(f"{PREFIX}/", json=payload)
     assert response.status_code == 200, response.text
