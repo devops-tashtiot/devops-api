@@ -69,21 +69,22 @@ Body: {"key": key, "name": name, "description": description, "public": <caller-s
 passes it through to Bitbucket unmodified. Sending `"public": true` really does create a public
 project.
 
-**`mirrored_env_destination` (POST /mirror only) — a non-empty list of display-name suffixes,
-NOT Bitbucket Smart Mirrors server names.** The field is `list[str]` (`min_length=1`, no
-duplicates). `create_mirror_project` joins the entries with `+` and appends that to `name` (e.g.
-`["Nati", "Kat"]` → `"My Project - Nati+Kat"`), calls the same `create_project` the plain
-endpoint uses, then registers the project with the mirror **exactly once** — see "Mirror
-registration" below for why it's decoupled from this field. `key` is untouched.
+**`mirrored_env_destination` (POST /mirror only) — a single display-name suffix, NOT a
+Bitbucket Smart Mirrors server name.** The field is a plain `str` (one value per request, not a
+list — a project only ever gets one naming suffix). `create_mirror_project` appends it to `name`
+(e.g. `"Nati"` → `"My Project - Nati"`), calls the same `create_project` the plain endpoint
+uses, then registers the project with the mirror — see "Mirror registration" below for why
+that's decoupled from this field entirely. `key` is untouched.
 
 **Valid suffix values live on the spec itself (`mirror_suffix_project_names`), not a fixed
 `Literal` or module-level `Enum`.** `MirrorProjectSpec` carries a second field,
-`mirror_suffix_project_names: list[str]`, defaulted via `default_factory` from
+`mirror_suffix_project_names: list[str]` (this one *is* a list — it's the enumerable set of
+choices, not the caller's single pick), defaulted via `default_factory` from
 `global_config.BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (`app/global_conf.py` — a global field,
 not this module's own `conf.py`, same as `BITBUCKET_USERNAME`/`BITBUCKET_PASSWORD`/
 `BITBUCKET_API_URL`; default `["Nati", "Kat"]`, overridable via the
 `BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` env var). `MirrorProjectSpec.validate_mirrored_env_destination`
-(a `model_validator`) checks every `mirrored_env_destination` entry against
+(a `model_validator`) checks `mirrored_env_destination` against
 `self.mirror_suffix_project_names` **at request-validation time**, not against a value frozen at
 import time — this is a deliberate difference from the `EnvironmentEnum`/`SizeEnum` pattern
 `app/v1/argocd/schemas.py` uses for `ARGOCD_ALLOWED_ENVS`/`ARGOCD_ALLOWED_SIZES` (those build a
@@ -93,22 +94,25 @@ Because `mirror_suffix_project_names` is a normal field, **a caller can override
 to allow a different set of naming suffixes for this request — pass both fields together if you
 need a suffix outside `BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES`.
 
+An earlier iteration made `mirrored_env_destination` a `list[str]` so one call could register a
+project under multiple suffixes at once (`"Nati+Kat"`) — reverted back to a single `str`;
+callers only ever pick one of the two.
+
 ### Mirror registration — Bitbucket Data Center's Smart Mirrors REST API
 
 **`mirrored_env_destination` does not name a mirror server, and the actual mirror server is
-discovered live, not configured.** An earlier version of this endpoint incorrectly used each
-`mirrored_env_destination` entry (e.g. `"Nati"`, `"Kat"`) as the name to search for in
-Bitbucket's own `mirrorServers` list — that only worked by coincidence if a real registered
-mirror happened to be named exactly `"Nati"` or `"Kat"`. A version after that introduced a
+discovered live, not configured.** An earlier version of this endpoint incorrectly used
+`mirrored_env_destination` (e.g. `"Nati"`, `"Kat"`) as the name to search for in Bitbucket's own
+`mirrorServers` list — that only worked by coincidence if a real registered mirror happened to
+be named exactly `"Nati"` or `"Kat"`. A version after that introduced a
 `BITBUCKET_MIRROR_SERVER_NAME` config value instead — also removed, since this platform
 registers exactly **one** physical Smart Mirrors server, so there's nothing to disambiguate by
 name at all. `_get_registered_mirror_server` (`operations.py`) fetches the full `mirrorServers`
 list and returns it directly if there's exactly one entry, raising `404` if none are registered
 or `409` if more than one is found (this code assumes a single-mirror deployment; a genuine
 multi-mirror farm would need a real disambiguation mechanism, not currently implemented).
-`create_mirror_project` registers the project with that mirror **exactly once**, regardless of
-how many entries are in `mirrored_env_destination` — that field only controls the project's
-display name, never how many times or with which mirror(s) it gets registered.
+`mirrored_env_destination` plays no role in which mirror gets used — it only controls the
+project's display name.
 
 ```
 GET  /rest/mirroring/1.0/mirrorServers?start={start}&limit=100     (paginated, on the main instance)
@@ -242,12 +246,12 @@ revisit if Atlassian ever ships this.
 | Field | Type | Constraints |
 |---|---|---|
 | `mirror_suffix_project_names` | `list[str]` | optional; defaults (via `default_factory`) to `global_config.BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (`["Nati", "Kat"]`); caller may override to allow a different set of naming suffixes for this request — **not** related to which mirror server gets used, which is discovered live (see "Mirror registration" below) |
-| `mirrored_env_destination` | `list[str]` | required; `min_length=1`, no duplicates, every entry must be in `mirror_suffix_project_names`; joined by `+` and appended to `name` as `" - {joined}"` — a naming choice only, does not affect which/how many mirrors are registered |
+| `mirrored_env_destination` | `str` | required; `min_length=1`, must be one of `mirror_suffix_project_names`; appended to `name` as `" - {value}"` — a naming choice only, does not affect which mirror gets used |
 
 Model validators: `require_at_least_one_admin` (inherited from `ProjectSpec`) requires at least
 one of `admin_user` / `admin_group`. `validate_mirrored_env_destination` (on `MirrorProjectSpec`)
-enforces the no-duplicates and allowed-values checks above, reading
-`self.mirror_suffix_project_names` at validation time rather than a value fixed at import.
+enforces the allowed-values check above, reading `self.mirror_suffix_project_names` at
+validation time rather than a value fixed at import.
 
 **Aligned to Bitbucket Data Center's actual project-key constraints** (previously the schema
 allowed any 1-255 char alphanumeric string, which was far looser than what Bitbucket itself

@@ -86,7 +86,7 @@ def _mirror_project_payload(**overrides):
         "name": "my-project",
         "description": "A mirrored project",
         "admin_user": "nati",
-        "mirrored_env_destination": ["Nati"],
+        "mirrored_env_destination": "Nati",
     }
     data.update(overrides)
     return MirrorProjectSpec(**data)
@@ -297,63 +297,8 @@ async def test_create_mirror_project_creates_then_registers():
     assert result["id"] == 7
     main_client.post.assert_called_once()
     assert main_client.post.call_args.kwargs["json"]["name"] == "my-project - Nati"
-    # registered exactly once against the single configured mirror server, regardless
-    # of the mirrored_env_destination suffix chosen for the name
+    # registered exactly once against the single discovered mirror server, regardless
+    # of which mirrored_env_destination suffix was chosen for the name
     mirror_client.post.assert_called_once()
     endpoint = mirror_client.post.call_args.args[0]
     assert endpoint.endswith("/settings/projects/7")
-
-
-@pytest.mark.asyncio
-async def test_create_mirror_project_with_two_destinations_registers_once():
-    # mirrored_env_destination is a display-name suffix, not a mirror server name — two
-    # destinations still means exactly one registration call, against the single
-    # discovered mirror server, not one call per destination.
-    create_response = MagicMock(status_code=200, text="")
-    create_response.json = MagicMock(return_value={"id": 7, "key": "MYPROJ"})
-    main_client = MagicMock()
-    main_client.post = AsyncMock(return_value=create_response)
-    main_client.get = AsyncMock(
-        return_value=MagicMock(
-            status_code=200,
-            json=MagicMock(
-                return_value={
-                    "values": [
-                        {
-                            "id": "m1",
-                            "baseUrl": "https://the-mirror.example.com",
-                            "name": "mirror",
-                        }
-                    ],
-                    "isLastPage": True,
-                }
-            ),
-        )
-    )
-
-    mirror_client = MagicMock()
-    mirror_client.get = AsyncMock(
-        return_value=MagicMock(
-            status_code=200,
-            json=MagicMock(
-                return_value={
-                    "values": [
-                        {"id": "u1", "baseUrl": ops.global_config.BITBUCKET_API_URL}
-                    ],
-                    "isLastPage": True,
-                }
-            ),
-        )
-    )
-    mirror_client.post = AsyncMock(return_value=MagicMock(status_code=200, text=""))
-
-    with patch.object(ops, "BaseAPI") as mock_base_api:
-        mock_base_api.return_value.client = mirror_client
-        result = await ops.create_mirror_project(
-            main_client,
-            _mirror_project_payload(mirrored_env_destination=["Nati", "Kat"]),
-        )
-
-    assert result["id"] == 7
-    assert main_client.post.call_args.kwargs["json"]["name"] == "my-project - Nati+Kat"
-    mirror_client.post.assert_called_once()

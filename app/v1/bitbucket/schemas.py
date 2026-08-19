@@ -65,28 +65,22 @@ class MirrorProjectSpec(ProjectSpec):
         "naming suffixes for this request.",
     )
 
-    mirrored_env_destination: list[str] = Field(
+    mirrored_env_destination: str = Field(
         ...,
         min_length=1,
-        description="Naming suffix(es) for this project — must each appear in "
-        "mirror_suffix_project_names. Appended to the end of the project name, joined "
-        "by '+' (e.g. ' - Nati+Kat'). Does NOT name or select a mirror server: the "
-        "actual physical Smart Mirrors server is discovered live (this deployment "
-        "registers exactly one), and the project is registered with it exactly once "
-        "regardless of how many suffixes are listed here.",
+        description="Naming suffix for this project — must appear in "
+        "mirror_suffix_project_names. Appended to the end of the project name (e.g. "
+        "' - Nati'). Does NOT name or select a mirror server: the actual physical "
+        "Smart Mirrors server is discovered live (this deployment registers exactly "
+        "one), regardless of which suffix is chosen here.",
     )
 
     @model_validator(mode="after")
     def validate_mirrored_env_destination(self) -> "MirrorProjectSpec":
-        chosen = self.mirrored_env_destination
-        if len(set(chosen)) != len(chosen):
-            raise ValueError("mirrored_env_destination must not contain duplicates")
-        allowed = set(self.mirror_suffix_project_names)
-        invalid = [d for d in chosen if d not in allowed]
-        if invalid:
+        if self.mirrored_env_destination not in self.mirror_suffix_project_names:
             raise ValueError(
-                f"mirrored_env_destination contains values not in "
-                f"mirror_suffix_project_names: {invalid}"
+                f"mirrored_env_destination {self.mirrored_env_destination!r} not in "
+                f"mirror_suffix_project_names: {self.mirror_suffix_project_names}"
             )
         return self
 

@@ -168,18 +168,13 @@ def test_unknown_field_is_ignored_not_rejected():
 
 
 def test_mirror_spec_with_nati_is_valid():
-    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ["Nati"]})
-    assert spec.mirrored_env_destination == ["Nati"]
+    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "Nati"})
+    assert spec.mirrored_env_destination == "Nati"
 
 
 def test_mirror_spec_with_kat_is_valid():
-    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ["Kat"]})
-    assert spec.mirrored_env_destination == ["Kat"]
-
-
-def test_mirror_spec_with_both_is_valid():
-    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ["Nati", "Kat"]})
-    assert spec.mirrored_env_destination == ["Nati", "Kat"]
+    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "Kat"})
+    assert spec.mirrored_env_destination == "Kat"
 
 
 def test_mirror_spec_without_mirrored_env_destination_raises():
@@ -187,23 +182,18 @@ def test_mirror_spec_without_mirrored_env_destination_raises():
         MirrorProjectSpec(**VALID)
 
 
-def test_mirror_spec_empty_list_raises():
+def test_mirror_spec_empty_string_raises():
     with pytest.raises(ValidationError):
-        MirrorProjectSpec(**{**VALID, "mirrored_env_destination": []})
+        MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ""})
 
 
 def test_mirror_spec_invalid_choice_raises():
-    with pytest.raises(ValidationError):
-        MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ["SomeoneElse"]})
-
-
-def test_mirror_spec_duplicate_destination_raises():
-    with pytest.raises(ValidationError, match="duplicates"):
-        MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ["Nati", "Nati"]})
+    with pytest.raises(ValidationError, match="not in mirror_suffix_project_names"):
+        MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "SomeoneElse"})
 
 
 def test_mirror_spec_defaults_allowed_names_from_config():
-    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": ["Nati"]})
+    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "Nati"})
     assert spec.mirror_suffix_project_names == ["Nati", "Kat"]
 
 
@@ -212,11 +202,11 @@ def test_mirror_spec_caller_can_override_allowed_names():
         **{
             **VALID,
             "mirror_suffix_project_names": ["Custom"],
-            "mirrored_env_destination": ["Custom"],
+            "mirrored_env_destination": "Custom",
         }
     )
     assert spec.mirror_suffix_project_names == ["Custom"]
-    assert spec.mirrored_env_destination == ["Custom"]
+    assert spec.mirrored_env_destination == "Custom"
 
 
 def test_mirror_spec_destination_not_in_overridden_names_raises():
@@ -225,12 +215,12 @@ def test_mirror_spec_destination_not_in_overridden_names_raises():
             **{
                 **VALID,
                 "mirror_suffix_project_names": ["Custom"],
-                "mirrored_env_destination": ["Nati"],
+                "mirrored_env_destination": "Nati",
             }
         )
 
 
 def test_mirror_spec_still_requires_at_least_one_admin():
-    data = {**VALID, "admin_user": None, "mirrored_env_destination": ["Nati"]}
+    data = {**VALID, "admin_user": None, "mirrored_env_destination": "Nati"}
     with pytest.raises(ValidationError, match="admin_user or admin_group"):
         MirrorProjectSpec(**data)

@@ -180,14 +180,11 @@ async def register_project_with_mirror(
 async def create_mirror_project(
     bitbucket_client: Any, payload: MirrorProjectSpec
 ) -> dict:
-    # mirrored_env_destination is purely a display-name suffix (or several, joined by
-    # "+") — it does NOT name a Bitbucket Smart Mirrors server. The actual mirror server
-    # is discovered live (see _get_registered_mirror_server), and every mirrored project
-    # is registered with it exactly once, regardless of how many suffixes were chosen for
-    # the name.
-    suffix = "+".join(payload.mirrored_env_destination)
+    # mirrored_env_destination is purely a display-name suffix — it does NOT name a
+    # Bitbucket Smart Mirrors server. The actual mirror server is discovered live (see
+    # _get_registered_mirror_server), independent of which suffix was chosen.
     mirrored_name_payload = payload.model_copy(
-        update={"name": f"{payload.name} - {suffix}"}
+        update={"name": f"{payload.name} - {payload.mirrored_env_destination}"}
     )
     project = await create_project(bitbucket_client, mirrored_name_payload)
     await register_project_with_mirror(bitbucket_client, payload.key, project["id"])

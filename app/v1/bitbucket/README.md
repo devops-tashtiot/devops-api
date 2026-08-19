@@ -41,15 +41,14 @@ automatically if any later step fails.
 | Field | Type | Required | Constraints | Description |
 |---|---|---|---|---|
 | `mirror_suffix_project_names` | array of strings | no | defaults to `BITBUCKET_MIRROR_SUFFIX_PROJECT_NAMES` (`Nati`, `Kat`) | The set of valid **naming suffixes** for this request — not mirror server names |
-| `mirrored_env_destination` | array of strings | yes | non-empty, no duplicates; each entry must be in `mirror_suffix_project_names` | Naming suffix(es) — joined by `+` and appended to the end of `name`. Does **not** control which or how many mirror servers get used |
+| `mirrored_env_destination` | string | yes | must be one of `mirror_suffix_project_names` | The naming suffix — appended to the end of `name`. Does **not** control which mirror server gets used |
 
-> The actual project name sent to Bitbucket becomes `"{name} - {destinations joined by '+'}"`
-> (e.g. `["Nati", "Kat"]` → `"{name} - Nati+Kat"`) — `key` is unaffected. Separately, after the
-> project is created it's registered **exactly once** with this instance's single registered
-> physical Smart Mirrors server, discovered live via Bitbucket's Smart Mirrors REST API (see
-> `app/v1/bitbucket/CLAUDE.md`'s "Mirror registration" section for the exact calls).
-> `mirrored_env_destination` is unrelated to which mirror gets used — it only affects the
-> project's display name.
+> The actual project name sent to Bitbucket becomes `"{name} - {mirrored_env_destination}"` (e.g.
+> `"Nati"` → `"{name} - Nati"`) — `key` is unaffected. Separately, after the project is created
+> it's registered with this instance's single registered physical Smart Mirrors server,
+> discovered live via Bitbucket's Smart Mirrors REST API (see `app/v1/bitbucket/CLAUDE.md`'s
+> "Mirror registration" section for the exact calls). `mirrored_env_destination` is unrelated to
+> which mirror gets used — it only affects the project's display name.
 
 ---
 
