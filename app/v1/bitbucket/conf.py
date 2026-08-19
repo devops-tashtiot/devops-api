@@ -19,6 +19,11 @@ class BitbucketConfig(BaseSettings):
         default="/rest/crowd/latest",
         description="Crowd REST API base path — used for user directory listing and sync",
     )
+    BITBUCKET_MIRRORING_ENDPOINT: str = Field(
+        default="/rest/mirroring/1.0",
+        description="Smart Mirrors REST API base path — used to discover a registered "
+        "physical mirror server (by name) and register a project with it",
+    )
 
 
 config = BitbucketConfig()

@@ -2,9 +2,12 @@ from typing import Any
 
 from fastapi import HTTPException
 from loguru import logger
+from tashtiot_apis_library.fastapi_template.utils import BaseAPI
+
+from app.global_conf import global_config
 
 from .conf import config
-from .schemas import ProjectSpec
+from .schemas import MirrorProjectSpec, ProjectSpec
 
 
 def _handle_response(response):
@@ -58,7 +61,7 @@ async def validate_admin_principals(bitbucket_client: Any, payload: ProjectSpec)
         await _assert_group_exists(bitbucket_client, payload.admin_group)
 
 
-async def create_project(bitbucket_client: Any, payload: ProjectSpec):
+async def create_project(bitbucket_client: Any, payload: ProjectSpec) -> dict:
     key, name, description, endpoint = (
         payload.key,
         payload.name,
@@ -74,9 +77,112 @@ async def create_project(bitbucket_client: Any, payload: ProjectSpec):
         }
         response = await bitbucket_client.post(endpoint, json=body)
         _handle_response(response)
+        return response.json()
     except Exception as e:
         logger.error(f"Unexpected error creating project {key}: {e!s}")
         raise
+
+
+async def _find_mirror_server(bitbucket_client: Any, mirror_name: str) -> dict:
+    # Discovered live via the Mirroring API rather than hardcoded — mirror servers'
+    # base URLs are registered/renamed on the Bitbucket side (Administration > Mirroring),
+    # not something devops-api should know ahead of time.
+    endpoint = f"{config.BITBUCKET_MIRRORING_ENDPOINT}/mirrorServers"
+    start = 0
+    try:
+        while True:
+            response = await bitbucket_client.get(
+                endpoint, params={"start": start, "limit": 100}
+            )
+            _handle_response(response)
+            page = response.json()
+            for mirror in page["values"]:
+                if mirror.get("name", "").lower() == mirror_name.lower():
+                    return mirror
+            if page.get("isLastPage", True):
+                break
+            start = page["nextPageStart"]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error listing Bitbucket mirror servers: {e!s}")
+        raise
+    raise HTTPException(
+        status_code=404,
+        detail=f"No registered Bitbucket mirror server named '{mirror_name}' was found",
+    )
+
+
+async def _find_upstream_id(mirror_client: Any) -> str:
+    # The mirror server tracks our main Bitbucket instance as one of its "upstreams" —
+    # resolved live by matching baseUrl rather than assuming an ID, since the upstreamId is
+    # assigned by the mirror server itself when the two instances were first connected.
+    endpoint = f"{config.BITBUCKET_MIRRORING_ENDPOINT}/upstreamServers"
+    start = 0
+    try:
+        while True:
+            response = await mirror_client.get(
+                endpoint, params={"start": start, "limit": 100}
+            )
+            _handle_response(response)
+            page = response.json()
+            for upstream in page["values"]:
+                if upstream.get("baseUrl") == global_config.BITBUCKET_API_URL:
+                    return upstream["id"]
+            if page.get("isLastPage", True):
+                break
+            start = page["nextPageStart"]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error listing upstream servers on mirror: {e!s}")
+        raise
+    raise HTTPException(
+        status_code=502,
+        detail="This Bitbucket instance is not registered as an upstream on the target "
+        "mirror server — the mirror farm connection must be set up first",
+    )
+
+
+async def register_project_with_mirror(
+    bitbucket_client: Any, payload: MirrorProjectSpec, project_id: int
+) -> None:
+    mirror = await _find_mirror_server(
+        bitbucket_client, payload.mirrored_env_destination
+    )
+    # Same admin credentials as the main Bitbucket — per this platform's mirror setup, the
+    # physical mirror servers share the same auth as the source instance.
+    mirror_client = BaseAPI(
+        mirror["baseUrl"],
+        auth=(global_config.BITBUCKET_USERNAME, global_config.BITBUCKET_PASSWORD),
+    ).client
+    upstream_id = await _find_upstream_id(mirror_client)
+    endpoint = (
+        f"{config.BITBUCKET_MIRRORING_ENDPOINT}/upstreamServers/{upstream_id}"
+        f"/settings/projects/{project_id}"
+    )
+    try:
+        response = await mirror_client.post(endpoint)
+        _handle_response(response)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Unexpected error registering project {payload.key} with mirror "
+            f"'{payload.mirrored_env_destination}': {e!s}"
+        )
+        raise
+
+
+async def create_mirror_project(
+    bitbucket_client: Any, payload: MirrorProjectSpec
+) -> dict:
+    mirrored_name_payload = payload.model_copy(
+        update={"name": f"{payload.name} - {payload.mirrored_env_destination}"}
+    )
+    project = await create_project(bitbucket_client, mirrored_name_payload)
+    await register_project_with_mirror(bitbucket_client, payload, project["id"])
+    return project
 
 
 async def list_repos(bitbucket_client: Any, key: str) -> list[dict]:

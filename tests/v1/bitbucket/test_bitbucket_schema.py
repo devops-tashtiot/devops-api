@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.v1.bitbucket.schemas import ProjectSpec
+from app.v1.bitbucket.schemas import MirrorProjectSpec, ProjectSpec
 
 VALID = {
     "key": "MYPROJ",
@@ -162,3 +162,32 @@ def test_unknown_field_is_ignored_not_rejected():
     # (e.g. extra="forbid") is a deliberate decision, not an accidental behavior shift.
     spec = ProjectSpec(**{**VALID, "unexpected_field": "surprise"})
     assert not hasattr(spec, "unexpected_field")
+
+
+# --- MirrorProjectSpec (POST /mirror) ---
+
+
+def test_mirror_spec_with_nati_is_valid():
+    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "Nati"})
+    assert spec.mirrored_env_destination == "Nati"
+
+
+def test_mirror_spec_with_kat_is_valid():
+    spec = MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "Kat"})
+    assert spec.mirrored_env_destination == "Kat"
+
+
+def test_mirror_spec_without_mirrored_env_destination_raises():
+    with pytest.raises(ValidationError):
+        MirrorProjectSpec(**VALID)
+
+
+def test_mirror_spec_invalid_choice_raises():
+    with pytest.raises(ValidationError):
+        MirrorProjectSpec(**{**VALID, "mirrored_env_destination": "SomeoneElse"})
+
+
+def test_mirror_spec_still_requires_at_least_one_admin():
+    data = {**VALID, "admin_user": None, "mirrored_env_destination": "Nati"}
+    with pytest.raises(ValidationError, match="admin_user or admin_group"):
+        MirrorProjectSpec(**data)

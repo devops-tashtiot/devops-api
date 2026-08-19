@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field, model_validator
 from tashtiot_apis_library import OperationRequest
 
@@ -47,5 +49,17 @@ class ProjectSpec(BaseModel):
         return self
 
 
+class MirrorProjectSpec(ProjectSpec):
+    mirrored_env_destination: Literal["Nati", "Kat"] = Field(
+        ...,
+        description="Registered Bitbucket Smart Mirrors server to register this project "
+        "with — appended to the end of the project name as ' - Nati' or ' - Kat'",
+    )
+
+
 class BitbucketProjectRequest(OperationRequest):
     spec: ProjectSpec
+
+
+class BitbucketMirrorProjectRequest(OperationRequest):
+    spec: MirrorProjectSpec

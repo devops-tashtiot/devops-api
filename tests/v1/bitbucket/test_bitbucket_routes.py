@@ -1,8 +1,9 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.global_conf import global_config
 from app.v1.bitbucket.conf import config
 from app.v1.bitbucket.routes import get_v1_bitbucket_router
 
@@ -64,6 +65,89 @@ def test_create_project_calls_create_endpoint(client, mock_bitbucket_client):
     client.post(f"{PREFIX}/", json=VALID_PAYLOAD)
     endpoints = [c.args[0] for c in mock_bitbucket_client.post.call_args_list]
     assert any("/projects" in ep for ep in endpoints)
+
+
+def _mock_response(json_body=None, status_code=200):
+    resp = MagicMock(status_code=status_code, text="")
+    resp.json = MagicMock(return_value=json_body or {})
+    return resp
+
+
+def test_create_project_leaves_name_unchanged(client, mock_bitbucket_client):
+    client.post(f"{PREFIX}/", json=VALID_PAYLOAD)
+    create_call = mock_bitbucket_client.post.call_args_list[0]
+    assert create_call.kwargs["json"]["name"] == "test-project"
+
+
+# --- create mirror project (POST /mirror) ---
+
+
+def test_create_mirror_project_appends_mirrored_env_destination_to_name(
+    client, mock_bitbucket_client
+):
+    # create response needs a numeric "id" — register_project_with_mirror uses it, not "key"
+    mock_bitbucket_client.post = AsyncMock(return_value=_mock_response({"id": 7}))
+
+    def get_side_effect(endpoint, *args, **kwargs):
+        if "mirrorServers" in endpoint:
+            return _mock_response(
+                {
+                    "values": [
+                        {
+                            "id": "m1",
+                            "baseUrl": "https://nati-mirror.example.com",
+                            "name": "Nati",
+                        }
+                    ],
+                    "isLastPage": True,
+                }
+            )
+        return _mock_response({"values": [{"slug": "nati", "name": "nati"}]})
+
+    mock_bitbucket_client.get = AsyncMock(side_effect=get_side_effect)
+
+    mirror_client = MagicMock()
+    mirror_client.get = AsyncMock(
+        return_value=_mock_response(
+            {
+                "values": [{"id": "u1", "baseUrl": global_config.BITBUCKET_API_URL}],
+                "isLastPage": True,
+            }
+        )
+    )
+    mirror_client.post = AsyncMock(return_value=_mock_response())
+
+    payload = {
+        "metadata": VALID_METADATA,
+        "spec": {**VALID_PAYLOAD["spec"], "mirrored_env_destination": "Nati"},
+    }
+    with patch("app.v1.bitbucket.operations.BaseAPI") as mock_base_api:
+        mock_base_api.return_value.client = mirror_client
+        response = client.post(f"{PREFIX}/mirror", json=payload)
+
+    assert response.status_code == 200, response.text
+    create_call = mock_bitbucket_client.post.call_args_list[0]
+    assert create_call.kwargs["json"]["name"] == "test-project - Nati"
+    # and the project was actually registered with the discovered mirror server
+    mirror_client.post.assert_called_once()
+    assert mirror_client.post.call_args.args[0].endswith("/settings/projects/7")
+
+
+def test_create_mirror_project_without_mirrored_env_destination_returns_422(client):
+    response = client.post(f"{PREFIX}/mirror", json=VALID_PAYLOAD)
+    assert response.status_code == 422
+
+
+def test_create_project_rejects_mirrored_env_destination_field(client):
+    # mirrored_env_destination only exists on MirrorProjectSpec (POST /mirror) — sending it
+    # to the plain create endpoint is silently dropped as an unrecognized field, not an error,
+    # since BitbucketProjectRequest.spec is a plain ProjectSpec.
+    payload = {
+        "metadata": VALID_METADATA,
+        "spec": {**VALID_PAYLOAD["spec"], "mirrored_env_destination": "Nati"},
+    }
+    response = client.post(f"{PREFIX}/", json=payload)
+    assert response.status_code == 200, response.text
 
 
 def test_create_project_with_admin_user_assigns_user_permission(

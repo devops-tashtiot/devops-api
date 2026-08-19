@@ -30,11 +30,30 @@ Rolls back (deletes the project) automatically if any permission step fails.
 
 ---
 
+### `POST /mirror`
+
+Creates a new Bitbucket project registered with a physical Smart Mirrors server, and grants
+PROJECT_ADMIN to the specified user and/or group. Rolls back (deletes the project) automatically
+if any later step fails.
+
+**Request body** — same fields as `POST /`, plus:
+
+| Field | Type | Required | Constraints | Description |
+|---|---|---|---|---|
+| `mirrored_env_destination` | string | yes | one of `Nati`, `Kat` | Which registered mirror server to use — appended to the end of `name` as `" - Nati"` or `" - Kat"`, and the project is registered with that mirror |
+
+> The actual project name sent to Bitbucket becomes `"{name} - {mirrored_env_destination}"` — `key` is
+> unaffected. After the project is created it's also registered with the named physical mirror
+> server via Bitbucket's Smart Mirrors REST API (looked up live by name — see
+> `app/v1/bitbucket/CLAUDE.md`'s "Mirror registration" section for the exact calls).
+
+---
+
 ### `DELETE /{key}`
 
-Deletes a Bitbucket project. Bitbucket refuses to delete a project that still contains
-repositories (`409 IntegrityException`), so this endpoint first lists and deletes every
-repository under the project, then deletes the project itself.
+Deletes a Bitbucket project (created via either `POST /` or `POST /mirror`). Bitbucket refuses to
+delete a project that still contains repositories (`409 IntegrityException`), so this endpoint
+first lists and deletes every repository under the project, then deletes the project itself.
 
 ---
 
