@@ -93,6 +93,24 @@ SPACE_PERMISSION_OPERATIONS: list[dict[str, str]] = [
 ]
 
 
+async def _grant_all_operations(confluence_client: Any, grant_endpoint: str) -> None:
+    # read must be granted first and administer last (confirmed live, see the comment on
+    # SPACE_PERMISSION_OPERATIONS above) — the 12 operations in between have no confirmed
+    # ordering dependency on each other, so they're dispatched concurrently. Each op still
+    # gets its own PUT call (the grant endpoint's behavior with multiple ops in one body is
+    # unverified) — this only parallelizes the client-side dispatch, not the request shape.
+    first_op, *middle_ops, last_op = SPACE_PERMISSION_OPERATIONS
+    _handle_response(await confluence_client.put(grant_endpoint, json=[first_op]))
+
+    middle_responses = await asyncio.gather(
+        *(confluence_client.put(grant_endpoint, json=[op]) for op in middle_ops)
+    )
+    for response in middle_responses:
+        _handle_response(response)
+
+    _handle_response(await confluence_client.put(grant_endpoint, json=[last_op]))
+
+
 async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):
     key, admin_user = payload.key, payload.admin_user
     try:
@@ -103,8 +121,7 @@ async def assign_space_admin(confluence_client: Any, payload: SpaceSpec):
         user_key = user_resp.json().get("userKey")
 
         grant_endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}/permissions/user/{user_key}/grant"
-        for op in SPACE_PERMISSION_OPERATIONS:
-            _handle_response(await confluence_client.put(grant_endpoint, json=[op]))
+        await _grant_all_operations(confluence_client, grant_endpoint)
     except Exception as e:
         logger.error(f"Unexpected error assigning user admin to space {key}: {e!s}")
         raise
@@ -114,8 +131,7 @@ async def assign_space_group_admin(confluence_client: Any, payload: SpaceSpec):
     key, admin_group = payload.key, payload.admin_group
     try:
         grant_endpoint = f"{config.CONFLUENCE_ENDPOINT}/space/{key}/permissions/group/{admin_group}/grant"
-        for op in SPACE_PERMISSION_OPERATIONS:
-            _handle_response(await confluence_client.put(grant_endpoint, json=[op]))
+        await _grant_all_operations(confluence_client, grant_endpoint)
     except Exception as e:
         logger.error(f"Unexpected error assigning group admin to space {key}: {e!s}")
         raise

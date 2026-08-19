@@ -5,10 +5,15 @@
 `main.py` constructs a single `BaseAPI` client with basic auth from `global_config`:
 
 ```
-BaseAPI(global_config.CONFLUENCE_API_URL, auth=(global_config.CONFLUENCE_USERNAME, global_config.CONFLUENCE_PASSWORD)).client
+BaseAPI(global_config.CONFLUENCE_API_URL, auth=(global_config.CONFLUENCE_USERNAME, global_config.CONFLUENCE_PASSWORD), timeout=20.0).client
 ```
 
 Passed into `get_v1_confluence_router(confluence_client)` at startup — no per-request reconstruction.
+
+**`timeout=20.0`, not `BaseAPI`'s 10.0s default** — space creation's admin grant makes 14-15
+sequential `PUT` calls (see "Space permission calls" below), and the default was too tight for
+that flow. This is the only module that overrides `BaseAPI`'s default timeout; every other
+module (Artifactory, Bitbucket, Jira) still uses 10.0s.
 
 ## Routes
 
@@ -81,9 +86,17 @@ permissions screen exposes as a checkbox, not just admin — `SPACE_PERMISSION_O
 
 Each pair is granted with its own `PUT .../grant` call (one operation per call, not batched into
 a single request) — the grant endpoint's ordering-sensitivity was only confirmed for `read`
-before `administer`, so `SPACE_PERMISSION_OPERATIONS` keeps `read` first and `administer` last
-and everything else granted one at a time in between, rather than risk batching multiple ops into
-one `PUT` body.
+before `administer`, so `SPACE_PERMISSION_OPERATIONS` keeps `read` first and `administer` last,
+rather than risk batching multiple ops into one `PUT` body (never tested against a real
+Confluence instance, and a partial failure inside a batched array would be harder to attribute to
+a specific operation than a failed individual call).
+
+**The 12 operations in between are dispatched concurrently** (`_grant_all_operations` in
+`operations.py`, via `asyncio.gather`) — `read` is awaited first and `administer` last, both
+still sequential, but the middle dozen have no confirmed ordering dependency on each other or on
+`read`/`administer` individually, so parallelizing their dispatch is safe and cuts wall-clock time
+roughly 12x for that portion without changing the request shape Confluence has already been
+confirmed to accept (still one operation per `PUT` body, just no longer awaited one-at-a-time).
 
 **User admin (1 + 14 calls):**
 ```

@@ -43,6 +43,10 @@ def create_app() -> FastAPI:
         confluence_client = BaseAPI(
             global_config.CONFLUENCE_API_URL,
             auth=(global_config.CONFLUENCE_USERNAME, global_config.CONFLUENCE_PASSWORD),
+            # Space creation grants the full permission set via 14-15 sequential PUT
+            # calls (see app/v1/confluence/CLAUDE.md) — the 10s BaseAPI default was too
+            # tight for that flow.
+            timeout=20.0,
         ).client
         app.include_router(get_v1_confluence_router(confluence_client))
 
