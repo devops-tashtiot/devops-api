@@ -1,4 +1,4 @@
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Annotated, Any, Literal
 
 import yaml as _yaml
@@ -30,7 +30,7 @@ RoleLine = Annotated[
 ]
 
 
-class RbacResourceEnum(str, Enum):
+class RbacResourceEnum(StrEnum):
     applications = "applications"
     applicationsets = "applicationsets"
     clusters = "clusters"
@@ -45,7 +45,7 @@ class RbacResourceEnum(str, Enum):
     wildcard = "*"
 
 
-class RbacActionEnum(str, Enum):
+class RbacActionEnum(StrEnum):
     get = "get"
     create = "create"
     update = "update"

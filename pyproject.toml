@@ -1,7 +1,7 @@
 [project]
 name = "devops-api"
 version = "0.1.0"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.6",
     "httpx>=0.27.2",
@@ -39,15 +39,3 @@ dev = [
 # isort, pyupgrade, bugbear, ruff. B008 is the idiomatic FastAPI Depends() default.
 select = ["E4", "E7", "E9", "F", "I", "UP", "B", "RUF"]
 ignore = ["E402", "B008"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
-pythonpath = ["."]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-filterwarnings = ["ignore::DeprecationWarning"]
-markers = [
-    "integration: requires live services (Confluence, MinIO, Bitbucket, etc.)",
-]

@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
 from tashtiot_apis_library import OperationRequest
 
 
-class MemberType(str, Enum):
+class MemberType(StrEnum):
     USER = "user"
     GROUP = "group"
 
